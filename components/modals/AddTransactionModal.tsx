@@ -14,7 +14,7 @@ interface AddTransactionModalProps {
     onClose: () => void;
     type: TransactionType;
     agencyId: string;
-    onSuccess: () => void;
+    onSuccess: () => void | Promise<void>;
     initialData?: FinancialTransaction | null;
     initialAccountId?: string;
     accounts: FinancialAccount[];
@@ -136,8 +136,9 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         });
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        e.stopPropagation();
         if (!formData.description || !formData.amount || !formData.categoryId || !formData.accountId) {
             alert('Por favor, preencha todos os campos obrigatórios.');
             return;
@@ -179,7 +180,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 } : undefined);
             }
 
-            onSuccess();
+            await onSuccess();
             clearDraft(FINANCE_DRAFT_KEY);
             onClose();
         } catch (error) {
@@ -207,12 +208,12 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             {initialData ? 'Atualize as informações deste lançamento' : (type === 'INCOME' ? 'Registre uma entrada de valor no caixa' : 'Registre uma saída ou custo operacional')}
                         </p>
                     </div>
-                    <button onClick={onClose} className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all">
+                    <button type="button" onClick={onClose} className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all">
                         <X size={24} />
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-6">
+                <form id="transaction-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-6">
                     {/* Amount & Description Row */}
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
                         <div className="md:col-span-4">
@@ -424,7 +425,8 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         CANCELAR
                     </button>
                     <button
-                        onClick={handleSubmit}
+                        type="submit"
+                        form="transaction-form"
                         disabled={loading}
                         className={`flex-[2] px-6 py-4 text-white font-black rounded-2xl shadow-xl transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 ${type === 'INCOME' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' : 'bg-red-600 hover:bg-red-700 shadow-red-200'}`}
                     >
