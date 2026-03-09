@@ -22,9 +22,21 @@ const TEST_AGENCY_ID = 'agency_001';
 const round2 = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
 
 const App: React.FC = () => {
+  console.log('[DEBUG] App: Component Mounted/Remounted', {
+    pathname: window.location.pathname,
+    timestamp: new Date().toISOString()
+  });
+
   const [session, setSession] = useState<Session | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [activeView, setActiveView] = useState('dashboard');
+  const [activeView, setActiveView] = useState(() => {
+    return localStorage.getItem('comissone_active_view') || 'dashboard';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('comissone_active_view', activeView);
+  }, [activeView]);
+
   const [sales, setSales] = useState<Sale[]>([]);
   const [team, setTeam] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +46,12 @@ const App: React.FC = () => {
   });
   const [isRegistering, setIsRegistering] = useState(false);
   const [currentAgency, setCurrentAgency] = useState<Agency | null>(null);
+
+  // Use a ref to always have the latest currentUser in callbacks
+  const currentUserRef = React.useRef<User | null>(null);
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
 
   useEffect(() => {
     localStorage.setItem('dismissed_notifications', JSON.stringify(dismissedNotificationIds));
@@ -59,6 +77,7 @@ const App: React.FC = () => {
 
     // Get initial session
     supabase.auth.getSession().then(({ data: { session: s } }) => {
+      console.log('[DEBUG] App: Initial session loaded', !!s);
       setSession(s);
       if (s) {
         loadUserAndData(s.user.email!);
@@ -72,7 +91,7 @@ const App: React.FC = () => {
 
     // Listen for auth changes (login, logout, token refresh, OAuth callback)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
-      console.log('Auth event change:', event);
+      console.log('[DEBUG] App: onAuthStateChange event', event, !!s);
       // Ignorar TOKEN_REFRESHED e USER_UPDATED para não recarregar a tela
       if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') return;
       setSession(s);
@@ -97,9 +116,9 @@ const App: React.FC = () => {
     try {
       // Só mostra loading na primeira carga (quando não há usuário ainda)
       setLoading(prev => {
-        if (prev) return true; // já está em loading, mantém
-        // Se usuário já está carregado, não mostra loading
-        return currentUser === null;
+        if (prev) return true;
+        // Se já temos o usuário no REF, não precisamos mostrar o loader global
+        return currentUserRef.current === null;
       });
 
       // 1. Find user record by email
