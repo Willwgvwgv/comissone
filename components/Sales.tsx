@@ -422,12 +422,8 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
         if (onRefetch) onRefetch();
       }
 
-      // Se for edição, fechar o modal. Se for nova venda, manter aberto para próximo lançamento.
-      if (editingSale) {
-        closeModal();
-      } else {
-        resetFormKeepOpen();
-      }
+      // Fechar o modal após salvar (nova venda ou edição) e mostrar a lista atualizada.
+      closeModal();
     } catch (error) {
       // Fallback para desenvolvimento se o backend falhar
       if (process.env.NODE_ENV === 'development') {
