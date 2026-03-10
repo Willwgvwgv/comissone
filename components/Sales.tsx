@@ -35,6 +35,7 @@ import {
 import { useAutoSave, loadDraft, clearDraft } from '../src/hooks/useAutoSave';
 import { AutoSaveIndicator } from './SupportComponents';
 import { useSanitize } from '../src/hooks/useSanitize';
+import { formatCurrency } from '../src/utils/formatters';
 
 
 import { Sale, User, UserRole, CommissionStatus, BrokerSplit, SaleStatus } from '../types';
@@ -269,10 +270,6 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
     });
   }, [newSale.vgv, newSale.commission_percentage]);
 
-
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-  };
 
   const handleAddSplit = () => {
     if (!currentSplit.brokerId) return;

@@ -118,25 +118,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegister, agency }) => {
                 className="hidden lg:flex lg:w-1/2 flex-col justify-between p-16 relative overflow-hidden"
                 style={{ background: 'linear-gradient(135deg, #0f2744 0%, #1a4075 50%, #1e5fa8 100%)' }}
             >
-                {/* Grid overlay */}
-                <div
-                    className="absolute inset-0 pointer-events-none"
-                    style={{
-                        backgroundImage: `linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
-                                          linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)`,
-                        backgroundSize: '48px 48px'
-                    }}
-                />
-
-                {/* Glow blobs */}
-                <div
-                    className="absolute top-[-80px] right-[-80px] w-80 h-80 rounded-full pointer-events-none"
-                    style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.25) 0%, transparent 70%)' }}
-                />
-                <div
-                    className="absolute bottom-[-60px] left-[-60px] w-72 h-72 rounded-full pointer-events-none"
-                    style={{ background: 'radial-gradient(circle, rgba(30,95,168,0.3) 0%, transparent 70%)' }}
-                />
+                {/* Removed Grid overlay and Glow blobs */}
 
                 {/* Main content */}
                 <div className="relative z-10">

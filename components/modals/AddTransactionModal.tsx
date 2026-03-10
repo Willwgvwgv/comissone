@@ -61,7 +61,7 @@ const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 setFormData({
                     description: initialData.description,
                     amount: initialData.amount.toString(),
-                    amountDisplay: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(initialData.amount)),
+                    amountDisplay: formatCurrency(Number(initialData.amount)),
                     categoryId: initialData.category_id,
                     accountId: initialData.account_id || '',
                     dueDate: initialData.due_date,

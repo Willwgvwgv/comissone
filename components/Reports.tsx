@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 
 import { Sale, User, UserRole, CommissionStatus, SaleStatus } from '../types';
+import { formatCurrency } from '../src/utils/formatters';
 
 interface ReportsProps {
   sales: Sale[];
@@ -44,10 +45,6 @@ const Reports: React.FC<ReportsProps> = ({ sales, team, currentUser }) => {
   const [endDate, setEndDate] = useState<string>('');
   const [selectedBroker, setSelectedBroker] = useState<string>('all');
   const isAdmin = currentUser.role === UserRole.ADMIN;
-
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-  };
 
   // 1. Filtragem de dados para o relatório
   const filteredData = useMemo(() => {

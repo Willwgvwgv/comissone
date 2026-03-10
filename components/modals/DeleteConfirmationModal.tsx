@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Trash2, AlertTriangle, RefreshCw, CheckCircle } from 'lucide-react';
 import { FinancialTransaction } from '../../types';
+import { formatCurrency } from '../../src/utils/formatters';
 
 interface DeleteConfirmationModalProps {
     isOpen: boolean;
@@ -42,7 +43,7 @@ const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({ isOpe
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Você está excluindo</p>
                         <p className="text-slate-700 font-bold text-lg leading-tight">{transaction.description}</p>
                         <p className="text-sm font-medium text-slate-500 mt-1">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(transaction.amount))}
+                            {formatCurrency(Number(transaction.amount))}
                         </p>
                     </div>
 

@@ -27,6 +27,7 @@ import {
     RotateCcw
 } from 'lucide-react';
 import { FinancialAccount, FinancialTransaction, FinancialCategory } from '../../types';
+import { formatCurrency } from '../../src/utils/formatters';
 
 interface CreditCardManagementProps {
     accounts: FinancialAccount[];
@@ -44,13 +45,6 @@ interface CreditCardManagementProps {
     onEditTransaction: (transaction: FinancialTransaction) => void;
     onDeleteTransaction: (transaction: FinancialTransaction) => void;
 }
-
-const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-        style: 'currency',
-        currency: 'BRL'
-    }).format(value);
-};
 
 function getBankLogo(name: string) {
     const map: Record<string, string> = {

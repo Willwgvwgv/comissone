@@ -5,6 +5,7 @@ import {
     Edit2, ChevronDown, Plus, RotateCcw, Sparkles
 } from 'lucide-react';
 import { FinancialAccount, FinancialCategory, FinancialTransaction } from '../../types';
+import { formatCurrency } from '../../src/utils/formatters';
 import { ImportTransaction, parseOFX, parseCSV, generateFileHash, findRecurringMatch } from '../../src/lib/importUtils';
 
 interface StatementImportProps {
@@ -22,9 +23,6 @@ interface RowState {
     manuallyEdited: boolean;
     recurringMatch: ReturnType<typeof findRecurringMatch>;
 }
-
-const formatCurrency = (val: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
 const formatDate = (dateStr: string) => {
     if (!dateStr) return '';

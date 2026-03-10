@@ -25,6 +25,7 @@ import {
 
 
 import { Sale, User, UserRole, CommissionStatus } from '../types';
+import { formatCurrency } from '../src/utils/formatters';
 
 const round2 = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
 
@@ -271,24 +272,20 @@ const Commissions: React.FC<CommissionsProps> = ({ sales, currentUser, onUpdateS
 
 
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-  };
-
   const getStatusBadge = (status: CommissionStatus) => {
     switch (status) {
       case CommissionStatus.PAID:
-        return <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Paga</span>;
+        return <span className="status-badge status-success">Paga</span>;
       case CommissionStatus.PARTIAL:
-        return <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Parcial</span>;
+        return <span className="status-badge status-info">Parcial</span>;
       case CommissionStatus.PENDING:
-        return <span className="flex items-center gap-1.5 text-xs font-bold text-slate-500"><span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> Pendente</span>;
+        return <span className="status-badge status-warning">Pendente</span>;
       case CommissionStatus.OVERDUE:
-        return <span className="flex items-center gap-1.5 text-xs font-bold text-red-600"><span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Vencida</span>;
+        return <span className="status-badge status-error">Vencida</span>;
       case CommissionStatus.REQUESTED:
-        return <span className="flex items-center gap-1.5 text-xs font-bold text-orange-600"><span className="w-1.5 h-1.5 rounded-full bg-orange-500" /> Solicitada</span>;
+        return <span className="status-badge status-info">Solicitada</span>;
       case CommissionStatus.CANCELED:
-        return <span className="flex items-center gap-1.5 text-xs font-bold text-slate-400"><span className="w-1.5 h-1.5 rounded-full bg-slate-300" /> Cancelada</span>;
+        return <span className="status-badge bg-slate-100 text-slate-500">Cancelada</span>;
     }
   };
 

@@ -7,10 +7,11 @@ import {
     AlertTriangle, CheckCircle2, Clock
 } from 'lucide-react';
 import { FinancialAccount, FinancialTransaction } from '../../types';
+import { formatCurrency } from '../../src/utils/formatters';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const fmt = (v: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v ?? 0);
+    formatCurrency(v ?? 0);
 
 function getBankLogo(name: string) {
     const map: Record<string, string> = {

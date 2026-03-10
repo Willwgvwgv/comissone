@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import { User, FinancialTransaction, FinancialCategory, FinancialAccount, TransactionType, TransactionStatus } from '../types';
 import { useFinancial } from '../src/lib/useFinancial';
+import { formatCurrency } from '../src/utils/formatters';
 import { ImportTransaction } from '../src/lib/importUtils';
 import AddTransactionModal from './modals/AddTransactionModal';
 import DeleteConfirmationModal from './modals/DeleteConfirmationModal';
@@ -434,9 +435,6 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
         setModalType(transaction.type);
         setIsModalOpen(true);
     };
-
-    const formatCurrency = (val: number) =>
-        new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
     const formatDate = (dateStr: string) => {
         if (!dateStr) return '-';

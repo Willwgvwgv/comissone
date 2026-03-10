@@ -230,14 +230,7 @@ const App: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f8fafc] flex-col p-6 relative overflow-hidden">
-        {/* Grid Pattern Background */}
-        <div
-          className="absolute inset-0 pointer-events-none opacity-[0.4]"
-          style={{
-            backgroundImage: `linear-gradient(#e5e7eb 1px, transparent 1px), linear-gradient(90deg, #e5e7eb 1px, transparent 1px)`,
-            backgroundSize: '40px 40px'
-          }}
-        />
+        {/* Removed Grid Pattern Background */}
 
         <div className="text-center relative z-10">
           <div className="w-16 h-16 border-4 border-[#1e3a5f]/10 border-t-[#1e3a5f] rounded-full animate-spin mx-auto mb-6" />

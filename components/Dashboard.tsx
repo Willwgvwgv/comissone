@@ -32,6 +32,7 @@ import {
 import { Sale, UserRole, User, CommissionStatus, SaleStatus, FinancialTransaction } from '../types';
 import { useFinancial } from '../src/lib/useFinancial';
 import { round2 } from '../src/lib/supabaseHooks';
+import { formatCurrency } from '../src/utils/formatters';
 
 interface DashboardProps {
   sales: Sale[];
@@ -146,10 +147,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, currentUser }) => {
       brokerPerformance: Object.values(brokerPerfMap).sort((a, b) => b.vgv - a.vgv)
     };
   }, [filteredSales, currentUser.id, isAdmin, sales]);
-
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-  };
 
   const chartData = useMemo(() => {
     // Agrupamento por mês

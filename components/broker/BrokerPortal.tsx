@@ -5,9 +5,10 @@ import {
     TrendingUp, Banknote, Bell, XCircle, Info, Landmark
 } from 'lucide-react';
 import { User, Sale, CommissionStatus } from '../../types';
+import { formatCurrency } from '../../src/utils/formatters';
 
 const fmt = (v: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v ?? 0);
+    formatCurrency(v ?? 0);
 
 const formatDate = (d?: string) => {
     if (!d) return '—';
@@ -15,13 +16,13 @@ const formatDate = (d?: string) => {
     return `${day}/${m}/${y}`;
 };
 
-const STATUS_CONFIG: Record<CommissionStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
-    PENDING: { label: 'Pendente', color: 'text-amber-500', bg: 'bg-amber-50/50 border-amber-100', icon: <Clock size={12} /> },
-    OVERDUE: { label: 'Vencida', color: 'text-red-500', bg: 'bg-red-50/50 border-red-100', icon: <AlertTriangle size={12} /> },
-    REQUESTED: { label: 'Solicitado', color: 'text-blue-500', bg: 'bg-blue-50/50 border-blue-100', icon: <Send size={12} /> },
-    PAID: { label: 'Pago', color: 'text-emerald-500', bg: 'bg-emerald-50/50 border-emerald-100', icon: <CheckCircle2 size={12} /> },
-    PARTIAL: { label: 'Parcial', color: 'text-blue-400', bg: 'bg-blue-50/30 border-blue-100', icon: <Landmark size={12} /> },
-    CANCELED: { label: 'Cancelado', color: 'text-slate-400', bg: 'bg-slate-50/50 border-slate-100', icon: <XCircle size={12} /> },
+const STATUS_CONFIG: Record<CommissionStatus, { label: string; badgeClass: string; icon: React.ReactNode }> = {
+    PENDING: { label: 'Pendente', badgeClass: 'status-badge status-warning', icon: <Clock size={12} /> },
+    OVERDUE: { label: 'Vencida', badgeClass: 'status-badge status-error', icon: <AlertTriangle size={12} /> },
+    REQUESTED: { label: 'Solicitado', badgeClass: 'status-badge status-info', icon: <Send size={12} /> },
+    PAID: { label: 'Pago', badgeClass: 'status-badge status-success', icon: <CheckCircle2 size={12} /> },
+    PARTIAL: { label: 'Parcial', badgeClass: 'status-badge status-info', icon: <Landmark size={12} /> },
+    CANCELED: { label: 'Cancelado', badgeClass: 'status-badge bg-slate-100 text-slate-500', icon: <XCircle size={12} /> },
 };
 
 interface BrokerEntry {
@@ -220,10 +221,10 @@ const BrokerPortal: React.FC<BrokerPortalProps> = ({ currentUser, sales, onReque
                                                     <h3 className="text-[15px] font-medium text-slate-800 leading-tight tracking-tight">{entry.address}</h3>
                                                     <p className="text-[12px] text-slate-400 font-light">{entry.buyerName}</p>
                                                 </div>
-                                                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[9px] font-medium uppercase tracking-tight ${cfg.bg} ${cfg.color} border-current/20`}>
-                                                    {cfg.icon}
+                                                <span className={cfg.badgeClass}>
+                                                    <span className="mr-1">{cfg.icon}</span>
                                                     {cfg.label}
-                                                </div>
+                                                </span>
                                             </div>
 
                                             <div className="flex items-end justify-between">

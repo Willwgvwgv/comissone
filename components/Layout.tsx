@@ -32,11 +32,11 @@ const Layout: React.FC<LayoutProps> = ({
   return (
     <div className="flex h-screen bg-slate-50">
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col hidden md:flex">
-        <div className="p-6 border-b border-slate-100/10 bg-[#1E293B]">
-          <div className="leading-tight">
-            <span className="text-xl font-bold text-white tracking-tight">comissOne</span>
-            <p className="text-[10px] text-slate-400 tracking-wider font-medium">GESTÃO IMOBILIÁRIA</p>
+      <aside className="w-72 bg-white border-r border-slate-200 flex flex-col hidden md:flex shrink-0">
+        <div className="p-5 border-b border-slate-200 bg-white">
+          <div className="leading-tight min-w-0">
+            <span className="text-lg font-semibold text-slate-900 tracking-tight">comissOne</span>
+            <p className="text-[10px] text-slate-500 tracking-wider font-medium uppercase">Gestão imobiliária</p>
           </div>
         </div>
 
@@ -59,13 +59,13 @@ const Layout: React.FC<LayoutProps> = ({
                       setActiveView(item.id);
                     }
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isExpanded
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 min-w-0 ${isExpanded
                     ? 'bg-blue-50 text-blue-600 font-semibold shadow-sm'
                     : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
                     }`}
                 >
-                  {item.icon}
-                  <span className="text-sm">{item.label}</span>
+                  <div className="shrink-0">{item.icon}</div>
+                  <span className="text-sm min-w-0 flex-1 truncate text-left">{item.label}</span>
                   {item.subItems && (
                     <svg
                       className={`ml-auto w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
@@ -102,9 +102,9 @@ const Layout: React.FC<LayoutProps> = ({
         </nav>
 
         <div className="p-4 border-t border-slate-100">
-          <div className="bg-slate-50 rounded-xl p-4 mb-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4 shadow-sm min-w-0">
             <p className="text-xs text-slate-500 mb-1">Logado como</p>
-            <p className="text-sm font-semibold text-slate-800 truncate">{currentUser.name}</p>
+            <p className="text-sm font-semibold text-slate-800 truncate" title={currentUser.name}>{currentUser.name}</p>
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase mt-2 inline-block ${currentUser.role === UserRole.ADMIN ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'
               }`}>
               {currentUser.role}
@@ -204,7 +204,7 @@ const Layout: React.FC<LayoutProps> = ({
                                     </p>
                                     <div className="flex items-center justify-between mt-2">
                                       <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(notif.value)}
+                                        {formatCurrency(notif.value)}
                                       </span>
                                       <span className="text-[10px] text-slate-400">{notif.date.split('-').reverse().join('/')}</span>
                                     </div>
