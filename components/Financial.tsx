@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
     Plus, Search, ArrowUpCircle, ArrowDownCircle, AlertCircle,
     CheckCircle2, MoreVertical, Download, Wallet, Tags, Landmark,
-    ChevronDown, Trash2, Edit2, RotateCcw, X, Upload, RefreshCw
+    ChevronDown, Trash2, Edit2, RotateCcw, X, Upload, RefreshCw,
+    QrCode, Copy
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -19,6 +20,7 @@ import AddCategoryModal from './modals/AddCategoryModal';
 import AccountDetails from './financial/AccountDetails';
 import AccountReconciliation from './financial/AccountReconciliation';
 import StatementImport from './financial/StatementImport';
+import BankImport from '../src/pages/BankImport';
 import CreditCardManagement from './financial/CreditCardManagement';
 import AccountsView from './financial/AccountsView';
 
@@ -69,6 +71,10 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
     const [transactionToPay, setTransactionToPay] = useState<FinancialTransaction | null>(null);
     const [paymentAmount, setPaymentAmount] = useState('');
     const [selectedPaymentAccount, setSelectedPaymentAccount] = useState<string>('');
+
+    // PIX Modal State
+    const [isPixModalOpen, setIsPixModalOpen] = useState(false);
+    const [transactionForPix, setTransactionForPix] = useState<FinancialTransaction | null>(null);
 
     // Global Date Filter State
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -560,7 +566,7 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                 {activeTab === 'overview' && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         {/* Financial Health Chart */}
-                        <div className="card-base border-none">
+                        <div className="card-base">
                             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                                 <div>
                                     <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
@@ -616,7 +622,7 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                         {/* Next Payables & Receivables Grid */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             {/* Next Payables */}
-                            <div className="card-base border-none">
+                            <div className="card-base">
                                 <div className="flex items-center justify-between mb-6">
                                     <h3 className="text-sm font-black text-slate-700 flex items-center gap-2 uppercase tracking-widest">
                                         <ArrowDownCircle className="text-red-500" size={18} /> CONTAS A PAGAR (PRÓXIMAS)
@@ -650,7 +656,7 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                             </div>
 
                             {/* Next Receivables */}
-                            <div className="card-base border-none">
+                            <div className="card-base">
                                 <div className="flex items-center justify-between mb-6">
                                     <h3 className="text-sm font-black text-slate-700 flex items-center gap-2 uppercase tracking-widest">
                                         <ArrowUpCircle className="text-emerald-500" size={18} /> CONTAS A RECEBER (PRÓXIMAS)
@@ -761,8 +767,8 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
 
                 {/* Payment Modal */}
                 {isPaymentModalOpen && transactionToPay && (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4 animate-in fade-in duration-200">
-                        <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden transform transition-all scale-100 flex flex-col animate-in zoom-in-95 duration-200">
+                    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4 animate-in fade-in duration-200">
+                        <div className="bg-white/95 backdrop-blur-xl border border-white/60 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden transform transition-all scale-100 flex flex-col animate-in zoom-in-95 duration-200">
                             {/* Header */}
                             <div className={`px-8 py-6 flex items-center justify-between ${transactionToPay.type === 'INCOME' ? 'bg-emerald-600' : 'bg-red-600'}`}>
                                 <div>
@@ -934,6 +940,64 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                     </div>
                 )}
 
+                {/* PIX Modal */}
+                {isPixModalOpen && transactionForPix && (
+                    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4 animate-in fade-in duration-200">
+                        <div className="bg-white/95 backdrop-blur-xl border border-white/60 w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden transform transition-all scale-100 flex flex-col animate-in zoom-in-95 duration-200">
+                            <div className="px-8 py-6 bg-indigo-600 flex items-center justify-between">
+                                <div>
+                                    <h2 className="text-white font-black text-2xl flex items-center gap-3">
+                                        <QrCode size={28} />
+                                        Cobrar via PIX
+                                    </h2>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setIsPixModalOpen(false);
+                                        setTransactionForPix(null);
+                                    }}
+                                    className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all"
+                                >
+                                    <X size={24} />
+                                </button>
+                            </div>
+
+                            <div className="p-8 space-y-6 flex flex-col items-center text-center">
+                                <div className="w-full bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-2">
+                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Referente a</p>
+                                    <p className="text-slate-700 font-bold text-lg leading-tight">{transactionForPix.description}</p>
+                                    <p className="text-2xl font-black text-emerald-600 mt-2">{formatCurrency(Number(transactionForPix.amount) - (transactionForPix.paid_amount || 0))}</p>
+                                </div>
+
+                                <div className="bg-white p-4 border-2 border-slate-100 rounded-3xl shadow-sm inline-block">
+                                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=00020101021126580014br.gov.bcb.pix0136%7B${transactionForPix.id}%7D5204000053039865405${(Number(transactionForPix.amount) - (transactionForPix.paid_amount || 0)).toFixed(2)}5802BR5915COMISSONE TESTE6009SAO_PAULO62070503***6304`} alt="QR Code PIX" className="w-48 h-48 rounded-xl opacity-90" />
+                                </div>
+                                <p className="text-xs text-slate-500 font-medium max-w-[250px]">
+                                    Escaneie o QR Code com o app do seu banco para pagar, ou use o Pix Copia e Cola abaixo.
+                                </p>
+
+                                <div className="w-full">
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 text-left">PIX Copia e Cola (Demonstração)</label>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            readOnly
+                                            value={`00020101021126580014br.gov.bcb.pix0136${transactionForPix.id}5204000053039865405${(Number(transactionForPix.amount) - (transactionForPix.paid_amount || 0)).toFixed(2)}5802BR5915COMISSONE TESTE6009SAO_PAULO62070503***6304`}
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-mono text-xs text-slate-500 truncate"
+                                        />
+                                        <button 
+                                            onClick={() => alert('Código PIX copiado!')}
+                                            className="p-3 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-xl transition-all font-bold"
+                                            title="Copiar código"
+                                        >
+                                            <Copy size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {activeTab === 'transactions' && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1001,7 +1065,7 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
 
 
                         {/* Filters Bar */}
-                        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col lg:flex-row gap-4 lg:items-center justify-between">
+                        <div className="card-base mb-6 backdrop-blur-xl flex flex-col lg:flex-row gap-4 lg:items-center justify-between p-4">
                             <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
                                 <div className="relative flex-1 lg:flex-none lg:w-64">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
@@ -1110,10 +1174,10 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                         </div>
 
                         {/* Transactions Table */}
-                        <div className="card-base border-none p-0 overflow-hidden">
+                        <div className="card-base p-0 overflow-hidden">
                             <table className="table-base">
                                 <thead>
-                                    <tr className="bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                    <tr className="bg-transparent border-b border-black/5 text-xs font-bold text-slate-500 uppercase tracking-wider">
                                         <th className="px-6 py-4">
                                             <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-200" />
                                         </th>
@@ -1208,6 +1272,18 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                                                                 >
                                                                     <CheckCircle2 size={16} />
                                                                 </button>
+                                                                {item.type === 'INCOME' && (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setTransactionForPix(item);
+                                                                            setIsPixModalOpen(true);
+                                                                        }}
+                                                                        title="Gerar Cobrança PIX"
+                                                                        className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors shadow-sm bg-white"
+                                                                    >
+                                                                        <QrCode size={16} />
+                                                                    </button>
+                                                                )}
                                                                 <button
                                                                     onClick={() => openEditModal(item)}
                                                                     title="Editar Lançamento"
@@ -1240,7 +1316,7 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                         </div>
 
                         {/* --- FOOTER SUMMARY --- */}
-                        <div className="card-base border-none flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mt-4">
+                        <div className="card-base flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mt-4">
                             <div>
                                 <h4 className="text-lg font-black text-slate-800">Total do período</h4>
                                 <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">
@@ -1274,7 +1350,7 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
 
                 {activeTab === 'categories' && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="card-base border-slate-100 flex justify-between items-center mb-6">
+                        <div className="card-base flex justify-between items-center mb-6">
                             <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
                                 <Tags className="text-blue-600" /> Gerenciar Categorias
                             </h3>
@@ -1414,93 +1490,8 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                     )
                 )}
 
-                {activeTab === 'importacao' && (
-                    <StatementImport
-                        accounts={accounts}
-                        transactions={transactions}
-                        categories={categories}
-                        onConfirm={async (accId, filename, size, hash, txns) => {
-                            await confirmImport(accId, filename, size, hash, txns);
-                            setActiveTab('reconciliation');
-                        }}
-                    />
-                )}
-
-                {activeTab === 'reconciliation' && (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
-                            <div className="flex items-center gap-4">
-                                <div className="bg-blue-600 p-3 rounded-2xl text-white shadow-lg shadow-blue-100">
-                                    <RefreshCw size={24} />
-                                </div>
-                                <div>
-                                    <h2 className="text-xl font-black text-slate-800 tracking-tight">Conciliação Bancária</h2>
-                                    <p className="text-slate-500 font-medium text-xs">Vincule os lançamentos do seu extrato com o sistema</p>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-3">
-                                <select
-                                    className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all appearance-none pr-10"
-                                    value={selectedAccountForReconciliation}
-                                    onChange={(e) => setSelectedAccountForReconciliation(e.target.value)}
-                                >
-                                    {accounts.filter(a => a.type === 'BANK').map(acc => (
-                                        <option key={acc.id} value={acc.id}>{acc.name}</option>
-                                    ))}
-                                </select>
-                                <button
-                                    onClick={() => setActiveTab('importacao')}
-                                    className="px-6 py-2.5 bg-blue-600 text-white text-xs font-black rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all uppercase tracking-widest flex items-center gap-2"
-                                >
-                                    <Upload size={16} /> Nova Importação
-                                </button>
-                            </div>
-                        </div>
-
-                        {transactions.some(t => t.account_id === selectedAccountForReconciliation && t.import_id !== null && t.status === 'PENDING') ? (
-                            <AccountReconciliation
-                                account={currentAccountForRecon}
-                                importedTransactions={transactions
-                                    .filter(t => t.account_id === selectedAccountForReconciliation && t.import_id !== null && t.status === 'PENDING')
-                                    .map(t => ({
-                                        id: t.id,
-                                        date: t.due_date,
-                                        description: t.description,
-                                        amount: Number(t.amount),
-                                        type: t.type as 'INCOME' | 'EXPENSE',
-                                        fitid: t.bank_txn_id
-                                    }))
-                                }
-                                systemTransactions={transactions.filter(t => t.account_id === selectedAccountForReconciliation && t.import_id === null)}
-                                categories={categories}
-                                accounts={accounts}
-                                onConfirmMatch={handleConfirmMatch}
-                                onIgnore={async (id) => await deleteTransaction(id)}
-                                onCreateNew={async (imp) => {
-                                    const success = await handleCreateNew(imp);
-                                    if (success) {
-                                        await deleteTransaction(imp.id);
-                                    }
-                                }}
-                                onTransfer={handleTransfer}
-                            />
-                        ) : (
-                            <div className="bg-white rounded-3xl border border-dashed border-slate-300 p-24 text-center">
-                                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300">
-                                    <CheckCircle2 size={40} />
-                                </div>
-                                <h3 className="text-xl font-black text-slate-800 mb-2">Nenhum lançamento para conciliar</h3>
-                                <p className="text-slate-500 max-w-sm mx-auto mb-8 font-medium">Sua conta está em dia! Importe um novo extrato para começar a conciliação.</p>
-                                <button
-                                    onClick={() => setActiveTab('importacao')}
-                                    className="px-10 py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-black transition-all text-xs uppercase tracking-widest"
-                                >
-                                    Importar Extrato Bancário
-                                </button>
-                            </div>
-                        )}
-                    </div>
+                {(activeTab === 'reconciliation' || activeTab === 'importacao') && (
+                    <BankImport />
                 )}
 
                 {activeTab === 'cards' && (

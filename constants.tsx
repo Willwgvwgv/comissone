@@ -13,7 +13,8 @@ import {
   Filter,
   Tags,
   RefreshCw,
-  CreditCard
+  CreditCard,
+  Percent
 } from 'lucide-react';
 import { UserRole, Sale, User, CommissionStatus } from './types';
 

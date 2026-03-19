@@ -242,7 +242,7 @@ const Reports: React.FC<ReportsProps> = ({ sales, team, currentUser }) => {
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-wrap items-center gap-4 no-print">
+      <div className="card-base p-4 flex flex-wrap items-center gap-4 no-print">
         <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-2xl border border-slate-100">
           <Calendar size={16} className="text-slate-400" />
           <select
@@ -314,7 +314,7 @@ const Reports: React.FC<ReportsProps> = ({ sales, team, currentUser }) => {
 
       {/* Analytical KPI Header Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden group">
+        <div className="card-base p-6 relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
             <Target size={64} className="text-blue-600" />
           </div>
@@ -330,7 +330,7 @@ const Reports: React.FC<ReportsProps> = ({ sales, team, currentUser }) => {
           </p>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden group">
+        <div className="card-base p-6 relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
             <TrendingUp size={64} className="text-indigo-600" />
           </div>
@@ -346,7 +346,7 @@ const Reports: React.FC<ReportsProps> = ({ sales, team, currentUser }) => {
           </p>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden group">
+        <div className="card-base p-6 relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
             <Award size={64} className="text-emerald-600" />
           </div>
@@ -367,7 +367,7 @@ const Reports: React.FC<ReportsProps> = ({ sales, team, currentUser }) => {
 
       {/* Seasonal Analysis / YoY Comparison */}
 
-      <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
+      <div className="card-base p-8">
         <div className="flex items-center justify-between mb-10">
           <div>
             <h3 className="font-black text-slate-800 flex items-center gap-2">
@@ -410,7 +410,7 @@ const Reports: React.FC<ReportsProps> = ({ sales, team, currentUser }) => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
         {/* Performance por Corretor Bar Chart */}
-        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
+        <div className="card-base p-8">
           <div className="flex items-center justify-between mb-10">
             <h3 className="font-black text-slate-800 flex items-center gap-2">
               <BarChart3 className="text-blue-600" size={20} /> VGV por Corretor
@@ -447,7 +447,7 @@ const Reports: React.FC<ReportsProps> = ({ sales, team, currentUser }) => {
         </div>
 
         {/* Evolução Line Chart */}
-        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
+        <div className="card-base p-8">
           <div className="flex items-center justify-between mb-10">
             <h3 className="font-black text-slate-800 flex items-center gap-2">
               <TrendingUp className="text-indigo-600" size={20} /> Evolução de Comissões
@@ -472,7 +472,7 @@ const Reports: React.FC<ReportsProps> = ({ sales, team, currentUser }) => {
       </div>
 
       {/* Performance List Table */}
-      <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden break-inside-avoid">
+      <div className="card-base p-0 overflow-hidden break-inside-avoid">
         <div className="p-8 border-b border-slate-50 flex items-center justify-between">
           <h3 className="font-black text-slate-800 flex items-center gap-2 uppercase tracking-widest text-xs">
             Detalhamento por Corretor

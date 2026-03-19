@@ -111,126 +111,131 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({ isOpen, onClose, onSu
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90vh]">
-                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                        <Wallet className="text-blue-600" size={20} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
+            <div className="bg-white w-full max-w-md rounded-2xl shadow-[0_20px_50px_-12px_rgba(0,0,0,0.2)] ring-1 ring-slate-900/5 overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
+                <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-white/50 backdrop-blur-sm sticky top-0 z-10">
+                    <h2 className="text-xl font-bold tracking-tight text-slate-800 flex items-center gap-3">
+                        <div className="p-2 bg-gradient-to-br from-blue-50 to-blue-100 text-blue-600 rounded-xl shadow-inner">
+                            <Wallet size={20} />
+                        </div>
                         {initialData ? 'Editar Conta' : 'Nova Conta Bancária'}
                     </h2>
                     <button
                         onClick={onClose}
-                        className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
+                        className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-all duration-200 hover:rotate-90"
                     >
                         <X size={20} />
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-6 space-y-5">
-                    {/* Account Type Toggle */}
-                    <div className="flex bg-slate-100 p-1 rounded-xl">
-                        <button
-                            type="button"
-                            onClick={() => setType('BANK')}
-                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${type === 'BANK' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                            CONTA / BANCO
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setType('CREDIT_CARD')}
-                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${type === 'CREDIT_CARD' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                            CARTÃO DE CRÉDITO
-                        </button>
-                    </div>
+                <div className="overflow-y-auto no-scrollbar relative">
+                    <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                        {/* Account Type Toggle */}
+                        <div className="flex bg-slate-100/80 p-1.5 rounded-xl border border-slate-200/50 shadow-inner">
+                            <button
+                                type="button"
+                                onClick={() => setType('BANK')}
+                                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all duration-300 ${type === 'BANK' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5 scale-100' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 scale-95'}`}
+                            >
+                                <Wallet size={16} /> CONTA / BANCO
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setType('CREDIT_CARD')}
+                                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition-all duration-300 ${type === 'CREDIT_CARD' ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5 scale-100' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 scale-95'}`}
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg> CARTÃO
+                            </button>
+                        </div>
 
                     {/* Name Input */}
-                    <div className="space-y-1.5">
-                        <label className="text-sm font-semibold text-slate-700">Nome da Conta / Cartão <span className="text-red-500">*</span></label>
+                    <div className="space-y-2 group">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider group-focus-within:text-blue-500 transition-colors">Nome da Conta / Cartão <span className="text-red-500">*</span></label>
                         <input
                             type="text"
                             value={name}
                             onChange={e => setName(e.target.value)}
                             placeholder={type === 'BANK' ? "Ex: Itaú, Nubank, Caixinha..." : "Ex: Visa Platinum, Mastercard..."}
-                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-medium"
+                            className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100/50 focus:border-blue-400 focus:bg-white transition-all duration-300 font-medium text-slate-700 shadow-sm hover:border-slate-300"
                             required
                         />
                     </div>
 
                     {type === 'BANK' ? (
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-semibold text-slate-700">Saldo Inicial</label>
-                            <div className="relative">
-                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">R$</span>
+                        <div className="space-y-2 group">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider group-focus-within:text-blue-500 transition-colors">Saldo Inicial</label>
+                            <div className="relative flex items-center">
+                                <span className="absolute left-4 text-slate-400 font-bold">R$</span>
                                 <input
                                     type="number"
                                     step="0.01"
                                     value={initialBalance}
                                     onChange={e => setInitialBalance(e.target.value)}
                                     placeholder="0,00"
-                                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-medium"
+                                    className="w-full pl-12 pr-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100/50 focus:border-blue-400 focus:bg-white transition-all duration-300 font-medium text-slate-700 shadow-sm hover:border-slate-300"
                                 />
                             </div>
                         </div>
                     ) : (
-                        <div className="space-y-4">
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-semibold text-slate-700">Limite de Crédito</label>
-                                <div className="relative">
-                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">R$</span>
+                        <div className="space-y-5 animate-in slide-in-from-bottom-2 duration-300">
+                            <div className="space-y-2 group">
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider group-focus-within:text-blue-500 transition-colors">Limite de Crédito</label>
+                                <div className="relative flex items-center">
+                                    <span className="absolute left-4 text-slate-400 font-bold">R$</span>
                                     <input
                                         type="number"
                                         step="0.01"
                                         value={creditLimit}
                                         onChange={e => setCreditLimit(e.target.value)}
                                         placeholder="0,00"
-                                        className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-medium"
+                                        className="w-full pl-12 pr-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100/50 focus:border-blue-400 focus:bg-white transition-all duration-300 font-medium text-slate-700 shadow-sm hover:border-slate-300"
                                     />
                                 </div>
                             </div>
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-semibold text-slate-700">4 Últimos Dígitos do Cartão</label>
+                            <div className="space-y-2 group">
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider group-focus-within:text-blue-500 transition-colors">4 Últimos Dígitos do Cartão</label>
                                 <input
                                     type="text"
                                     maxLength={4}
                                     value={lastFourDigits}
                                     onChange={e => setLastFourDigits(e.target.value.replace(/\D/g, ''))}
                                     placeholder="Ex: 1234"
-                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-medium tracking-widest"
+                                    className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100/50 focus:border-blue-400 focus:bg-white transition-all duration-300 font-medium tracking-widest text-slate-700 shadow-sm hover:border-slate-300"
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-semibold text-slate-700">Dia de Fechamento</label>
+                                <div className="space-y-2 group">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider group-focus-within:text-blue-500 transition-colors">Fechamento</label>
                                     <input
                                         type="number"
                                         min="1"
                                         max="31"
                                         value={closingDay}
                                         onChange={e => setClosingDay(e.target.value)}
-                                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-medium"
+                                        placeholder="Dia"
+                                        className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100/50 focus:border-blue-400 focus:bg-white transition-all duration-300 font-medium text-slate-700 shadow-sm hover:border-slate-300"
                                     />
                                 </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-semibold text-slate-700">Dia de Vencimento</label>
+                                <div className="space-y-2 group">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider group-focus-within:text-blue-500 transition-colors">Vencimento</label>
                                     <input
                                         type="number"
                                         min="1"
                                         max="31"
                                         value={dueDay}
                                         onChange={e => setDueDay(e.target.value)}
-                                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-medium"
+                                        placeholder="Dia"
+                                        className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100/50 focus:border-blue-400 focus:bg-white transition-all duration-300 font-medium text-slate-700 shadow-sm hover:border-slate-300"
                                     />
                                 </div>
                             </div>
-                            <div className="space-y-1.5 pt-2">
-                                <label className="text-sm font-semibold text-slate-700">Conta Bancária Vinculada <span className="text-red-500">*</span></label>
-                                <p className="text-xs text-slate-500 mb-1">Na Conta Azul ou ERPs, a fatura precisa de uma conta de onde sairá o dinheiro.</p>
+                            <div className="space-y-2 group">
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider group-focus-within:text-blue-500 transition-colors">Conta Bancária Vinculada <span className="text-red-500">*</span></label>
+                                <p className="text-[11px] text-slate-400 mb-2 leading-relaxed">Na Conta Azul ou ERPs, a fatura precisa de uma conta de onde sairá o dinheiro.</p>
                                 <select
                                     value={linkedAccountId}
                                     onChange={e => setLinkedAccountId(e.target.value)}
-                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all font-medium appearance-none"
+                                    className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-100/50 focus:border-blue-400 focus:bg-white transition-all duration-300 font-medium appearance-none text-slate-700 shadow-sm hover:border-slate-300 cursor-pointer"
                                     required={type === 'CREDIT_CARD'}
                                 >
                                     <option value="" disabled>Selecionar conta bancária vinculada...</option>
@@ -243,53 +248,67 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({ isOpen, onClose, onSu
                     )}
 
                     {/* Color Selection */}
-                    <div className="space-y-1.5">
-                        <label className="text-sm font-semibold text-slate-700">Cor de Identificação</label>
-                        <div className="flex flex-wrap gap-2">
+                    <div className="space-y-3">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cor de Identificação</label>
+                        <div className="flex flex-wrap gap-2.5">
                             {COLORS.map(color => (
                                 <button
                                     key={color.value}
                                     type="button"
                                     onClick={() => setSelectedColor(color.value)}
-                                    className={`w-8 h-8 rounded-full ${color.bg} flex items-center justify-center transition-transform hover:scale-110 ${selectedColor === color.value ? 'ring-2 ring-offset-2 ring-slate-400 scale-110' : 'opacity-70 hover:opacity-100'}`}
+                                    className={`w-9 h-9 rounded-full ${color.bg} flex items-center justify-center transition-all duration-300 shadow-inner ${selectedColor === color.value ? 'ring-4 ring-offset-2 ring-blue-100 scale-110 shadow-lg' : 'opacity-70 hover:opacity-100 hover:scale-110 hover:shadow-md'}`}
+                                    title={color.name}
                                 >
-                                    {selectedColor === color.value && <Check size={14} className="text-white" />}
+                                    {selectedColor === color.value && <Check size={16} className="text-white drop-shadow-md animate-in zoom-in duration-200" />}
                                 </button>
                             ))}
                         </div>
                     </div>
 
                     {/* Default Checkbox */}
-                    <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                        <input
-                            type="checkbox"
-                            id="isDefault"
-                            checked={isDefault}
-                            onChange={e => setIsDefault(e.target.checked)}
-                            className="w-5 h-5 rounded text-blue-600 focus:ring-blue-200 border-gray-300"
-                        />
-                        <label htmlFor="isDefault" className="text-sm font-medium text-slate-700 cursor-pointer select-none">
-                            Definir como conta principal
-                        </label>
-                    </div>
+                    <label className="flex items-center gap-3 p-4 bg-slate-50/50 hover:bg-slate-50 rounded-xl border border-slate-200/60 cursor-pointer group transition-colors shadow-sm">
+                        <div className="relative flex items-center justify-center">
+                            <input
+                                type="checkbox"
+                                checked={isDefault}
+                                onChange={e => setIsDefault(e.target.checked)}
+                                className="w-5 h-5 rounded-md border-slate-300 text-blue-600 focus:ring-blue-200 focus:ring-offset-0 transition-all peer"
+                            />
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-sm font-bold text-slate-700 group-hover:text-slate-900 transition-colors">
+                                Definir como conta principal
+                            </span>
+                            <span className="text-xs text-slate-500">
+                                Movimentações irão para esta conta por padrão.
+                            </span>
+                        </div>
+                    </label>
 
-                    <div className="pt-2 flex gap-3">
+                    <div className="pt-4 flex gap-3 pb-2">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 py-3 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all"
+                            className="flex-1 py-3.5 px-4 bg-white border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all duration-300 shadow-sm"
                         >
                             Cancelar
                         </button>
                         <button
                             type="submit"
                             disabled={loading || !name}
-                            className="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                            className="flex-1 py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all duration-300 flex items-center justify-center gap-2"
                         >
-                            {loading ? 'Salvando...' : initialData ? 'Salvar Alterações' : 'Criar Conta'}
+                            {loading ? (
+                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : initialData ? (
+                                'Salvar Alterações'
+                            ) : (
+                                'Criar Conta'
+                            )}
                         </button>
                     </div>
-                </form>
+                    </form>
+                </div>
             </div>
         </div>
     );

@@ -35,7 +35,7 @@ import {
 import { useAutoSave, loadDraft, clearDraft } from '../src/hooks/useAutoSave';
 import { AutoSaveIndicator } from './SupportComponents';
 import { useSanitize } from '../src/hooks/useSanitize';
-import { formatCurrency } from '../src/utils/formatters';
+import { formatCurrency, formatCpfCnpjInput } from '../src/utils/formatters';
 
 
 import { Sale, User, UserRole, CommissionStatus, BrokerSplit, SaleStatus } from '../types';
@@ -191,16 +191,17 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
     debounceMs: 2000
   });
 
-  // Verificar rascunho ao carregar ou abrir modal (Restauração Automática)
+  // Verificar rascunho ao carregar (Restauração Automática e Silenciosa)
   useEffect(() => {
-    if (isModalOpen && !editingSale) {
+    if (!editingSale) {
       const draft = loadDraft<{ newSale: Partial<Sale>; installmentConfig: any }>(DRAFT_KEY);
       if (draft && draft.newSale && (draft.newSale.property_address || draft.newSale.buyer_name || draft.newSale.vgv)) {
         setNewSale(draft.newSale);
         setInstallmentConfig(draft.installmentConfig);
+        setIsModalOpen(true); // Reabre a tela exatamente como estava
       }
     }
-  }, [isModalOpen, editingSale]);
+  }, []);
 
   const { sanitizeForm } = useSanitize();
 
@@ -663,56 +664,56 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
       </div>
       {/* KPI Header Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="card-base border-none relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-            <Building2 size={64} className="text-blue-600" />
+        <div className="card-base relative overflow-hidden group">
+          <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
+            <Building2 size={100} className="text-blue-600" />
           </div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+          <div className="flex items-center justify-between mb-4 relative z-10">
+            <div className="p-2.5 bg-gradient-to-br from-blue-500/20 to-blue-600/5 text-blue-600 rounded-xl border border-blue-500/20 shadow-inner">
               <Building2 size={24} />
             </div>
           </div>
-          <p className="text-sm font-medium text-slate-500 mb-1">Comissões Imobiliária</p>
-          <p className="text-2xl font-bold text-slate-800">{formatCurrency(kpis.agencyComm)}</p>
+          <p className="text-sm font-medium text-slate-500 mb-1 relative z-10">Comissões Imobiliária</p>
+          <p className="text-2xl font-bold text-slate-800 relative z-10">{formatCurrency(kpis.agencyComm)}</p>
         </div>
 
-        <div className="card-base border-none relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-            <Wallet size={64} className="text-indigo-600" />
+        <div className="card-base relative overflow-hidden group">
+          <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
+            <Wallet size={100} className="text-indigo-600" />
           </div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+          <div className="flex items-center justify-between mb-4 relative z-10">
+            <div className="p-2.5 bg-gradient-to-br from-indigo-500/20 to-indigo-600/5 text-indigo-600 rounded-xl border border-indigo-500/20 shadow-inner">
               <Wallet size={24} />
             </div>
           </div>
-          <p className="text-sm font-medium text-slate-500 mb-1">Comissão Total Gerada</p>
-          <p className="text-2xl font-bold text-slate-800">{formatCurrency(kpis.totalComm)}</p>
+          <p className="text-sm font-medium text-slate-500 mb-1 relative z-10">Comissão Total Gerada</p>
+          <p className="text-2xl font-bold text-slate-800 relative z-10">{formatCurrency(kpis.totalComm)}</p>
         </div>
 
-        <div className="card-base border-none relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-            <FileX2 size={64} className="text-red-600" />
+        <div className="card-base relative overflow-hidden group">
+          <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
+            <FileX2 size={100} className="text-red-600" />
           </div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-red-50 text-red-600 rounded-lg">
+          <div className="flex items-center justify-between mb-4 relative z-10">
+            <div className="p-2.5 bg-gradient-to-br from-red-500/20 to-red-600/5 text-red-600 rounded-xl border border-red-500/20 shadow-inner">
               <FileX2 size={24} />
             </div>
           </div>
-          <p className="text-sm font-medium text-slate-500 mb-1">Vendas sem Nota</p>
-          <p className="text-2xl font-bold text-red-600">{kpis.salesWithoutInvoice}</p>
+          <p className="text-sm font-medium text-slate-500 mb-1 relative z-10">Vendas sem Nota</p>
+          <p className="text-2xl font-bold text-red-600 relative z-10">{kpis.salesWithoutInvoice}</p>
         </div>
 
-        <div className="card-base border-none relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-            <ShoppingCart size={64} className="text-slate-600" />
+        <div className="card-base relative overflow-hidden group">
+          <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
+            <ShoppingCart size={100} className="text-slate-600" />
           </div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-slate-50 text-slate-600 rounded-lg">
+          <div className="flex items-center justify-between mb-4 relative z-10">
+            <div className="p-2.5 bg-gradient-to-br from-slate-400/20 to-slate-500/5 text-slate-600 rounded-xl border border-slate-400/20 shadow-inner">
               <ShoppingCart size={24} />
             </div>
           </div>
-          <p className="text-sm font-medium text-slate-500 mb-1">Vendas Totais</p>
-          <p className="text-2xl font-bold text-slate-800">{kpis.count}</p>
+          <p className="text-sm font-medium text-slate-500 mb-1 relative z-10">Vendas Totais</p>
+          <p className="text-2xl font-bold text-slate-800 relative z-10">{kpis.count}</p>
         </div>
       </div>
 
@@ -720,7 +721,7 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
 
 
       {/* Control Bar & Filtros */}
-      <div className="card-base border-none mb-6">
+      <div className="card-base mb-6 backdrop-blur-xl">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex flex-1 items-center gap-3 w-full sm:w-auto bg-slate-50/80 p-1.5 rounded-2xl border border-slate-100">
             <div className="relative flex-1 max-lg">
@@ -825,11 +826,11 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
 
 
       {/* Sales Table */}
-      <div className="card-base border-none p-0 overflow-hidden">
+      <div className="card-base p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="table-base">
             <thead>
-              <tr className="bg-white text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em] border-b border-slate-50">
+              <tr className="bg-transparent text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em] border-b border-black/5">
                 <th className="px-10 py-8">DATA</th>
                 <th className="px-10 py-8">IMÓVEL</th>
                 <th className="px-6 py-8">COMPRADOR</th>
@@ -983,9 +984,9 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
       {/* Modal de Confirmação de Exclusão */}
       {
         saleToDelete && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in duration-300">
-              <div className="p-8 text-center">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white/90 backdrop-blur-2xl border border-white/50 w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in duration-300">
+              <div className="p-8 text-center bg-transparent">
                 <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
                   <AlertCircle size={32} />
                 </div>
@@ -1015,9 +1016,9 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
 
       {/* Modal de Cadastro/Edição de Venda */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-4xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in duration-200">
-            <div className="p-8 border-b border-slate-50 flex items-center justify-between sticky top-0 bg-white z-10">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white/95 backdrop-blur-xl border border-white/60 w-full max-w-4xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in duration-200">
+            <div className="p-8 border-b border-black/5 flex items-center justify-between sticky top-0 bg-transparent z-10">
               <div>
                 <h3 className="text-2xl font-black text-slate-800">{editingSale ? 'Editar Venda' : 'Nova Venda'}</h3>
                 <p className="text-sm text-slate-400 font-medium">Cadastre os detalhes do imóvel e o rateio de comissões.</p>
@@ -1099,9 +1100,9 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
                     <h4 className="text-xs font-black uppercase text-blue-600 tracking-widest">Participantes</h4>
                     <div className="grid grid-cols-2 gap-4">
                       <input type="text" value={newSale.buyer_name || ''} placeholder="Nome do Comprador" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl text-sm" onChange={e => setNewSale({ ...newSale, buyer_name: e.target.value })} />
-                      <input type="text" value={newSale.buyer_cpf || ''} placeholder="CPF do Comprador" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl text-sm" onChange={e => setNewSale({ ...newSale, buyer_cpf: e.target.value })} />
+                      <input type="text" value={newSale.buyer_cpf || ''} placeholder="CPF do Comprador" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl text-sm" maxLength={18} onChange={e => setNewSale({ ...newSale, buyer_cpf: formatCpfCnpjInput(e.target.value) })} />
                       <input type="text" value={newSale.seller_name || ''} placeholder="Nome do Vendedor" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl text-sm" onChange={e => setNewSale({ ...newSale, seller_name: e.target.value })} />
-                      <input type="text" value={newSale.seller_cpf || ''} placeholder="CPF do Vendedor" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl text-sm" onChange={e => setNewSale({ ...newSale, seller_cpf: e.target.value })} />
+                      <input type="text" value={newSale.seller_cpf || ''} placeholder="CPF do Vendedor" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl text-sm" maxLength={18} onChange={e => setNewSale({ ...newSale, seller_cpf: formatCpfCnpjInput(e.target.value) })} />
                     </div>
                   </div>
 
@@ -1268,7 +1269,7 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
               </div>
             </div>
 
-            <div className="p-8 border-t border-slate-50 bg-slate-50/50 flex justify-end gap-4 sticky bottom-0 z-10">
+            <div className="p-8 border-t border-black/5 bg-transparent flex justify-end gap-4 sticky bottom-0 z-10">
               <button
                 onClick={() => {
                   closeModal();
@@ -1290,8 +1291,6 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
           </div>
         </div>
       )}
-
-      <AutoSaveIndicator isSaving={isSaving} lastSaved={lastSaved} />
     </div>
   );
 };

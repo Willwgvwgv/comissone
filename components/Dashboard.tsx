@@ -1,6 +1,22 @@
 
 import React, { useMemo, useState } from 'react';
 import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  rectSortingStrategy,
+} from '@dnd-kit/sortable';
+import { SortableWidget } from './SortableWidget';
+import {
   ComposedChart,
   Area,
   Bar,
@@ -43,9 +59,62 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, currentUser }) => {
   const isAdmin = currentUser.role === UserRole.ADMIN;
 
   // Estados dos Filtros
+  const [kpiOrder, setKpiOrder] = useState<string[]>(() => {
+    const defaultOrder = ['kpi-vgv', 'kpi-comm', 'kpi-paid', 'kpi-pending', 'kpi-forecast', 'kpi-canceled'];
+    const saved = localStorage.getItem('comissone_kpi_order_v2');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const missing = defaultOrder.filter(id => !parsed.includes(id));
+        return [...parsed, ...missing];
+      } catch (e) {
+        return defaultOrder;
+      }
+    }
+    return defaultOrder;
+  });
+
+  const [chartOrder, setChartOrder] = useState<string[]>(() => {
+    const defaultOrder = ['chart-trends', 'chart-status', 'chart-broker-perf'];
+    const saved = localStorage.getItem('comissone_chart_order_v2');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const missing = defaultOrder.filter(id => !parsed.includes(id));
+        return [...parsed, ...missing];
+      } catch (e) {
+        return defaultOrder;
+      }
+    }
+    return defaultOrder;
+  });
   const [period, setPeriod] = useState<string>('all');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEndLabel = (event: DragEndEvent, type: 'kpi' | 'chart') => {
+    const { active, over } = event;
+    if (active && over && active.id !== over.id) {
+      if (type === 'kpi') {
+        const oldIndex = kpiOrder.indexOf(active.id as string);
+        const newIndex = kpiOrder.indexOf(over.id as string);
+        const newOrder = arrayMove(kpiOrder, oldIndex, newIndex);
+        setKpiOrder(newOrder);
+        localStorage.setItem('comissone_kpi_order_v2', JSON.stringify(newOrder));
+      } else {
+        const oldIndex = chartOrder.indexOf(active.id as string);
+        const newIndex = chartOrder.indexOf(over.id as string);
+        const newOrder = arrayMove(chartOrder, oldIndex, newIndex);
+        setChartOrder(newOrder);
+        localStorage.setItem('comissone_chart_order_v2', JSON.stringify(newOrder));
+      }
+    }
+  };
 
   const { transactions } = useFinancial(currentUser.agency_id);
 
@@ -96,6 +165,12 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, currentUser }) => {
     let paidComm = 0;
     let pendingComm = 0;
     let overdueComm = 0;
+    let forecast30d = 0;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const date30d = new Date(today);
+    date30d.setDate(today.getDate() + 30);
 
     // Contar vendas canceladas de todas as vendas (antes de filtrar)
     const canceledCount = sales.filter(s => s.status === SaleStatus.CANCELED).length;
@@ -111,14 +186,23 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, currentUser }) => {
         if (isTargetBroker) {
           totalComm += split.calculated_value;
 
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
+          const todayCalc = new Date();
+          todayCalc.setHours(0, 0, 0, 0);
           const isActuallyOverdue = split.status === CommissionStatus.OVERDUE ||
-            (split.status === CommissionStatus.PENDING && split.forecast_date && new Date(split.forecast_date + 'T00:00:00') < today);
+            (split.status === CommissionStatus.PENDING && split.forecast_date && new Date(split.forecast_date + 'T00:00:00') < todayCalc);
 
           if (split.status === CommissionStatus.PAID) paidComm += split.calculated_value;
           else if (isActuallyOverdue) overdueComm += split.calculated_value;
-          else pendingComm += split.calculated_value;
+          else {
+            pendingComm += split.calculated_value;
+            // Previsão 30 dias
+            if (split.forecast_date) {
+              const fd = new Date(split.forecast_date + 'T00:00:00');
+              if (fd >= todayCalc && fd <= date30d) {
+                forecast30d += split.calculated_value;
+              }
+            }
+          }
         }
 
       });
@@ -143,6 +227,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, currentUser }) => {
       paidComm,
       pendingComm,
       overdueComm,
+      forecast30d,
       canceledCount,
       brokerPerformance: Object.values(brokerPerfMap).sort((a, b) => b.vgv - a.vgv)
     };
@@ -259,10 +344,10 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, currentUser }) => {
       </div>
       {/* Alerta de Vencimentos do Dia (Admin Only) */}
       {isAdmin && dueToday.length > 0 && (
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 rounded-[32px] shadow-xl shadow-blue-100 relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500">
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 rounded-[32px] shadow-[0_8px_32px_rgba(59,130,246,0.3)] relative overflow-hidden animate-slide-up duration-500 border border-blue-400/30">
           {/* Decorative shapes */}
-          <div className="absolute -right-8 -top-8 w-32 h-32 bg-white/10 rounded-full blur-2xl" />
-          <div className="absolute -left-8 -bottom-8 w-32 h-32 bg-blue-400/20 rounded-full blur-2xl" />
+          <div className="absolute -right-8 -top-8 w-32 h-32 bg-white/20 rounded-full blur-2xl" />
+          <div className="absolute -left-8 -bottom-8 w-32 h-32 bg-blue-400/30 rounded-full blur-2xl" />
 
           <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
             <div className="flex items-center gap-5">
@@ -291,7 +376,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, currentUser }) => {
       )}
 
       {/* Barra de Filtros do Dashboard */}
-      <div className="card-base border-none mb-6">
+      <div className="card-base mb-6 backdrop-blur-xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-slate-700 font-semibold">
             <Filter size={18} className="text-blue-600" />
@@ -350,78 +435,123 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, currentUser }) => {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-
-        <div className="card-base relative overflow-hidden group border-none">
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-            <TrendingUp size={64} className="text-blue-600" />
+      
+      {/* KPI Cards */}
+      <DndContext 
+        sensors={sensors} 
+        collisionDetection={closestCenter} 
+        onDragEnd={(e) => handleDragEndLabel(e, 'kpi')}
+      >
+        <SortableContext items={kpiOrder} strategy={rectSortingStrategy}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            {kpiOrder.map(id => {
+              if (id === 'kpi-vgv') return (
+                <SortableWidget key="kpi-vgv" id="kpi-vgv">
+                  <div className="card-base relative overflow-hidden group h-full">
+                    <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
+                      <TrendingUp size={100} className="text-blue-600" />
+                    </div>
+                    <div className="flex items-center justify-between mb-4 relative z-10">
+                      <div className="p-2.5 bg-gradient-to-br from-blue-500/20 to-blue-600/5 text-blue-600 rounded-xl border border-blue-500/20 shadow-inner">
+                        <TrendingUp size={22} />
+                      </div>
+                    </div>
+                    <p className="text-sm font-medium text-slate-500 mb-1 relative z-10">VGV Total</p>
+                    <p className="text-2xl font-bold text-slate-800 relative z-10">{formatCurrency(stats.totalVGV)}</p>
+                  </div>
+                </SortableWidget>
+              );
+              if (id === 'kpi-comm') return (
+                <SortableWidget key="kpi-comm" id="kpi-comm">
+                  <div className="card-base relative overflow-hidden group h-full">
+                    <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
+                      <Wallet size={100} className="text-indigo-600" />
+                    </div>
+                    <div className="flex items-center justify-between mb-4 relative z-10">
+                      <div className="p-2.5 bg-gradient-to-br from-indigo-500/20 to-indigo-600/5 text-indigo-600 rounded-xl border border-indigo-500/20 shadow-inner">
+                        <Wallet size={22} />
+                      </div>
+                    </div>
+                    <p className="text-sm font-medium text-slate-500 mb-1 relative z-10">Comissões Totais</p>
+                    <p className="text-2xl font-bold text-slate-800 relative z-10">{formatCurrency(stats.totalComm)}</p>
+                  </div>
+                </SortableWidget>
+              );
+              if (id === 'kpi-paid') return (
+                <SortableWidget key="kpi-paid" id="kpi-paid">
+                  <div className="card-base relative overflow-hidden group h-full">
+                    <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
+                      <CheckCircle2 size={100} className="text-emerald-600" />
+                    </div>
+                    <div className="flex items-center justify-between mb-4 relative z-10">
+                      <div className="p-2.5 bg-gradient-to-br from-emerald-500/20 to-emerald-600/5 text-emerald-600 rounded-xl border border-emerald-500/20 shadow-inner">
+                        <CheckCircle2 size={22} />
+                      </div>
+                    </div>
+                    <p className="text-sm font-medium text-slate-500 mb-1 relative z-10">Recebido</p>
+                    <p className="text-2xl font-bold text-slate-800 relative z-10">{formatCurrency(stats.paidComm)}</p>
+                  </div>
+                </SortableWidget>
+              );
+              if (id === 'kpi-pending') return (
+                <SortableWidget key="kpi-pending" id="kpi-pending">
+                  <div className="card-base relative overflow-hidden group h-full">
+                    <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:-rotate-6">
+                      <Clock size={100} className="text-amber-500" />
+                    </div>
+                    <div className="flex items-center justify-between mb-4 relative z-10">
+                      <div className="p-2.5 bg-gradient-to-br from-amber-500/20 to-amber-600/5 text-amber-600 rounded-xl border border-amber-500/20 shadow-inner">
+                        <Clock size={22} />
+                      </div>
+                    </div>
+                    <p className="text-sm font-medium text-slate-500 mb-1 relative z-10">A Receber</p>
+                    <p className="text-2xl font-bold text-slate-800 relative z-10">{formatCurrency(stats.pendingComm)}</p>
+                  </div>
+                </SortableWidget>
+              );
+              if (id === 'kpi-canceled') return (
+                <SortableWidget key="kpi-canceled" id="kpi-canceled">
+                  <div className="card-base relative overflow-hidden group h-full">
+                    <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:-rotate-6">
+                      <X size={100} className="text-slate-600" />
+                    </div>
+                    <div className="flex items-center justify-between mb-4 relative z-10">
+                      <div className="p-2.5 bg-gradient-to-br from-slate-400/20 to-slate-500/5 text-slate-600 rounded-xl border border-slate-400/20 shadow-inner">
+                        <X size={22} />
+                      </div>
+                    </div>
+                    <p className="text-sm font-medium text-slate-500 mb-1 relative z-10">Distratos</p>
+                    <p className="text-2xl font-bold text-slate-800 relative z-10">{stats.canceledCount}</p>
+                  </div>
+                </SortableWidget>
+              );
+              if (id === 'kpi-forecast') return (
+                <SortableWidget key="kpi-forecast" id="kpi-forecast">
+                  <div className="card-base relative overflow-hidden group h-full bg-gradient-to-br from-purple-500/5 to-fuchsia-500/5 border-purple-100">
+                    <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
+                      <TrendingUp size={100} className="text-purple-600" />
+                    </div>
+                    <div className="flex items-center justify-between mb-4 relative z-10">
+                      <div className="p-2.5 bg-gradient-to-br from-purple-500/20 to-purple-600/5 text-purple-600 rounded-xl border border-purple-500/20 shadow-inner">
+                        <TrendingUp size={22} />
+                      </div>
+                      <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">+IA</span>
+                    </div>
+                    <p className="text-sm font-medium text-purple-800/60 mb-1 relative z-10">Previsão 30d</p>
+                    <p className="text-2xl font-bold text-slate-800 relative z-10">{formatCurrency(stats.forecast30d)}</p>
+                  </div>
+                </SortableWidget>
+              );
+              return null;
+            })}
           </div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-              <TrendingUp size={24} />
-            </div>
-          </div>
-          <p className="text-sm font-medium text-slate-500 mb-1">VGV Total</p>
-          <p className="text-2xl font-bold text-slate-800">{formatCurrency(stats.totalVGV)}</p>
-        </div>
-
-        <div className="card-base relative overflow-hidden group border-none">
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-            <Wallet size={64} className="text-indigo-600" />
-          </div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
-              <Wallet size={24} />
-            </div>
-          </div>
-          <p className="text-sm font-medium text-slate-500 mb-1">Comissões Totais</p>
-          <p className="text-2xl font-bold text-slate-800">{formatCurrency(stats.totalComm)}</p>
-        </div>
-
-        <div className="card-base relative overflow-hidden group border-none">
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-            <CheckCircle2 size={64} className="text-emerald-600" />
-          </div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
-              <CheckCircle2 size={24} />
-            </div>
-          </div>
-          <p className="text-sm font-medium text-slate-500 mb-1">Recebido</p>
-          <p className="text-2xl font-bold text-slate-800">{formatCurrency(stats.paidComm)}</p>
-        </div>
-
-        <div className="card-base relative overflow-hidden group border-none">
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-            <Clock size={64} className="text-blue-600" />
-          </div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-              <Clock size={24} />
-            </div>
-          </div>
-          <p className="text-sm font-medium text-slate-500 mb-1">A Receber</p>
-          <p className="text-2xl font-bold text-slate-800">{formatCurrency(stats.pendingComm)}</p>
-        </div>
-
-        <div className="card-base relative overflow-hidden group border-none">
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-            <X size={64} className="text-slate-600" />
-          </div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-slate-50 text-slate-600 rounded-lg">
-              <X size={24} />
-            </div>
-          </div>
-          <p className="text-sm font-medium text-slate-500 mb-1">Distratos</p>
-          <p className="text-2xl font-bold text-slate-600">{stats.canceledCount}</p>
-        </div>
-      </div>
+        </SortableContext>
+      </DndContext>
 
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 card-base border-none">
-          <h3 className="font-bold text-slate-800 text-lg mb-8">Evolução de Vendas e Comissões</h3>
+        <div className="lg:col-span-2 card-base">
+          <h3 className="font-bold text-slate-800 text-lg mb-8 text-gradient">Evolução de Vendas e Comissões</h3>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData}>
@@ -482,8 +612,8 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, currentUser }) => {
 
         </div>
 
-        <div className="card-base border-none">
-          <h3 className="font-bold text-slate-800 text-lg mb-8">Distribuição de Status</h3>
+        <div className="card-base">
+          <h3 className="font-bold text-slate-800 text-lg mb-8 text-gradient">Distribuição de Status</h3>
           <div className="h-[250px] relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -523,11 +653,11 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, currentUser }) => {
       </div>
 
       {isAdmin && stats.brokerPerformance.length > 0 && (
-        <div className="card-base border-none">
-          <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2 mb-8">
+        <div className="card-base">
+          <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2 mb-8 text-gradient">
             <Award className="text-blue-600" size={20} /> Performance por Corretor
           </h3>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-xl">
             <table className="table-base">
               <thead>
                 <tr className="text-left text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-50">

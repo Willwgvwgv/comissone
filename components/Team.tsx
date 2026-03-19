@@ -178,7 +178,7 @@ const Team: React.FC<TeamProps> = ({ team, currentUser, onRemoveUser, onRefetch 
         </button>
       </div>
 
-      <div className="card-base border-none p-0 overflow-hidden">
+      <div className="card-base p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="table-base">
             <thead>
@@ -241,8 +241,8 @@ const Team: React.FC<TeamProps> = ({ team, currentUser, onRemoveUser, onRefetch 
       {/* Modal de Adição / Edição */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-50 flex items-center justify-between">
+          <div className="bg-white/95 backdrop-blur-xl border border-white/60 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+            <div className="p-6 border-b border-black/5 flex items-center justify-between bg-transparent">
               <div>
                 <h3 className="text-xl font-bold text-slate-800">{editingUser ? 'Editar Membro' : 'Novo Membro'}</h3>
                 <p className="text-xs text-slate-400">Configure as informações do usuário.</p>
@@ -328,7 +328,7 @@ const Team: React.FC<TeamProps> = ({ team, currentUser, onRemoveUser, onRefetch 
               )}
             </div>
 
-            <div className="p-6 border-t border-slate-50 bg-slate-50/50 flex justify-end gap-3">
+            <div className="p-6 border-t border-black/5 bg-transparent flex justify-end gap-3">
               <button
                 onClick={closeModal}
                 className="px-6 py-2.5 text-slate-400 font-bold hover:text-slate-600 hover:underline transition-all text-sm"

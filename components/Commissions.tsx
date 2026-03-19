@@ -476,12 +476,12 @@ const Commissions: React.FC<CommissionsProps> = ({ sales, currentUser, onUpdateS
       {/* Dashboard & KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* VGV Card (Not clickable for filter) */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-            <TrendingUp size={64} className="text-blue-600" />
+        <div className="card-base relative overflow-hidden group">
+          <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
+            <TrendingUp size={100} className="text-blue-600" />
           </div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+          <div className="flex items-center justify-between mb-4 relative z-10">
+            <div className="p-2.5 bg-gradient-to-br from-blue-500/20 to-blue-600/5 text-blue-600 rounded-xl border border-blue-500/20 shadow-inner">
               <TrendingUp size={24} />
             </div>
           </div>
@@ -491,14 +491,14 @@ const Commissions: React.FC<CommissionsProps> = ({ sales, currentUser, onUpdateS
 
         {/* Total Commissions Card */}
         <div
-          className={`bg-white p-6 rounded-2xl border relative overflow-hidden group cursor-pointer transition-all ${statusFilter === 'ALL' ? 'border-indigo-500 ring-1 ring-indigo-500 shadow-md' : 'border-slate-100 shadow-sm hover:border-indigo-200'}`}
+          className={`card-base relative overflow-hidden group cursor-pointer transition-all ${statusFilter === 'ALL' ? 'border-indigo-500 ring-1 ring-indigo-500 shadow-md' : 'hover:border-indigo-200'}`}
           onClick={() => setStatusFilter('ALL')}
         >
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-            <Wallet size={64} className="text-indigo-600" />
+          <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
+            <Wallet size={100} className="text-indigo-600" />
           </div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+          <div className="flex items-center justify-between mb-4 relative z-10">
+            <div className="p-2.5 bg-gradient-to-br from-indigo-500/20 to-indigo-600/5 text-indigo-600 rounded-xl border border-indigo-500/20 shadow-inner">
               <Wallet size={24} />
             </div>
             {statusFilter === 'ALL' && <div className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></div>}
@@ -509,14 +509,14 @@ const Commissions: React.FC<CommissionsProps> = ({ sales, currentUser, onUpdateS
 
         {/* Paid Card */}
         <div
-          className={`bg-white p-6 rounded-2xl border relative overflow-hidden group cursor-pointer transition-all ${statusFilter === CommissionStatus.PAID ? 'border-emerald-500 ring-1 ring-emerald-500 shadow-md' : 'border-slate-100 shadow-sm hover:border-emerald-200'}`}
+          className={`card-base relative overflow-hidden group cursor-pointer transition-all ${statusFilter === CommissionStatus.PAID ? 'border-emerald-500 ring-1 ring-emerald-500 shadow-md' : 'hover:border-emerald-200'}`}
           onClick={() => setStatusFilter(CommissionStatus.PAID)}
         >
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-            <CheckCircle2 size={64} className="text-emerald-600" />
+          <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
+            <CheckCircle2 size={100} className="text-emerald-600" />
           </div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+          <div className="flex items-center justify-between mb-4 relative z-10">
+            <div className="p-2.5 bg-gradient-to-br from-emerald-500/20 to-emerald-600/5 text-emerald-600 rounded-xl border border-emerald-500/20 shadow-inner">
               <CheckCircle2 size={24} />
             </div>
             {statusFilter === CommissionStatus.PAID && <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>}
@@ -527,14 +527,14 @@ const Commissions: React.FC<CommissionsProps> = ({ sales, currentUser, onUpdateS
 
         {/* Pending Card */}
         <div
-          className={`bg-white p-6 rounded-2xl border relative overflow-hidden group cursor-pointer transition-all ${statusFilter === CommissionStatus.PENDING ? 'border-blue-500 ring-1 ring-blue-500 shadow-md' : 'border-slate-100 shadow-sm hover:border-blue-200'}`}
+          className={`card-base relative overflow-hidden group cursor-pointer transition-all ${statusFilter === CommissionStatus.PENDING ? 'border-blue-500 ring-1 ring-blue-500 shadow-md' : 'hover:border-blue-200'}`}
           onClick={() => setStatusFilter(CommissionStatus.PENDING)}
         >
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-            <Clock size={64} className="text-blue-600" />
+          <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:-rotate-6">
+            <Clock size={100} className="text-blue-600" />
           </div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+          <div className="flex items-center justify-between mb-4 relative z-10">
+            <div className="p-2.5 bg-gradient-to-br from-blue-500/20 to-blue-600/5 text-blue-600 rounded-xl border border-blue-500/20 shadow-inner">
               <Clock size={24} />
             </div>
             {statusFilter === CommissionStatus.PENDING && <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>}
@@ -545,14 +545,14 @@ const Commissions: React.FC<CommissionsProps> = ({ sales, currentUser, onUpdateS
 
         {/* Overdue Card */}
         <div
-          className={`bg-white p-6 rounded-2xl border relative overflow-hidden group cursor-pointer transition-all ${statusFilter === CommissionStatus.OVERDUE ? 'border-red-500 ring-1 ring-red-500 shadow-md' : 'border-slate-100 shadow-sm hover:border-red-200'}`}
+          className={`card-base relative overflow-hidden group cursor-pointer transition-all ${statusFilter === CommissionStatus.OVERDUE ? 'border-red-500 ring-1 ring-red-500 shadow-md' : 'hover:border-red-200'}`}
           onClick={() => setStatusFilter(CommissionStatus.OVERDUE)}
         >
-          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:scale-110 transition-transform">
-            <Clock size={64} className="text-red-600" />
+          <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:-rotate-6">
+            <Clock size={100} className="text-red-600" />
           </div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-red-50 text-red-600 rounded-lg">
+          <div className="flex items-center justify-between mb-4 relative z-10">
+            <div className="p-2.5 bg-gradient-to-br from-red-500/20 to-red-600/5 text-red-600 rounded-xl border border-red-500/20 shadow-inner">
               <Clock size={24} />
             </div>
             {statusFilter === CommissionStatus.OVERDUE && <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>}
@@ -564,7 +564,7 @@ const Commissions: React.FC<CommissionsProps> = ({ sales, currentUser, onUpdateS
 
 
       {/* Filters Bar */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+      <div className="card-base mb-6 backdrop-blur-xl space-y-4">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
             <div className="relative flex-1 md:flex-none">
@@ -651,11 +651,11 @@ const Commissions: React.FC<CommissionsProps> = ({ sales, currentUser, onUpdateS
 
 
       {/* Commission Table */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <div className="card-base p-0 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="table-base">
             <thead>
-              <tr className="bg-slate-50 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">
+              <tr className="bg-transparent text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-black/5">
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4">Venda / Imóvel</th>
                 <th className="px-6 py-4">Corretor</th>
@@ -1050,8 +1050,8 @@ const Commissions: React.FC<CommissionsProps> = ({ sales, currentUser, onUpdateS
       {/* Modal Editar Previsão */}
       {isForecastModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-50 flex items-center justify-between">
+          <div className="bg-white/95 backdrop-blur-xl border border-white/60 w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+            <div className="p-6 border-b border-black/5 flex items-center justify-between bg-transparent">
               <div>
                 <h3 className="text-xl font-bold text-slate-800">Previsão de Pagto</h3>
                 <p className="text-xs text-slate-400">Ajuste a data esperada para o recebimento.</p>
@@ -1083,7 +1083,7 @@ const Commissions: React.FC<CommissionsProps> = ({ sales, currentUser, onUpdateS
               </div>
             </div>
 
-            <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3">
+            <div className="p-6 bg-transparent border-t border-black/5 flex gap-3">
               <button
                 onClick={() => setIsForecastModalOpen(false)}
                 className="flex-1 px-4 py-3 text-slate-500 font-bold hover:text-slate-700 transition-colors text-sm"
@@ -1104,8 +1104,8 @@ const Commissions: React.FC<CommissionsProps> = ({ sales, currentUser, onUpdateS
       {/* Modal de Concretizar Pagamento */}
       {isPaymentModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in duration-200">
-            <div className="p-8 pb-4 flex items-center justify-between">
+          <div className="bg-white/95 backdrop-blur-xl border border-white/60 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+            <div className="p-8 pb-4 flex items-center justify-between bg-transparent">
               <div>
                 <h3 className="text-xl font-bold text-slate-800">Concretizar Pagamento</h3>
                 <p className="text-xs font-medium text-slate-400 mt-0.5">Anexe o comprovante para finalizar.</p>

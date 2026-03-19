@@ -14,8 +14,17 @@ export function useAutoSave<T>({ key, data, debounceMs = 2000, onSave }: UseAuto
     const [isSaving, setIsSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<number | null>(null);
 
+    // Usa stringify para fazer deep equality da dependência,
+    // evitando rerenders infinitos caso passem um novo objeto inline (ex: {a, b})
+    const dataString = JSON.stringify(data || null);
+
     useEffect(() => {
-        if (!data || Object.keys(data as object).length === 0) return;
+        if (!dataString || dataString === 'null' || dataString === '{}') return;
+
+        // Somente parseamos quando realmente vamos usar
+        const parsedData = JSON.parse(dataString);
+
+        if (Object.keys(parsedData).length === 0) return;
 
         setIsSaving(true);
 
@@ -25,10 +34,10 @@ export function useAutoSave<T>({ key, data, debounceMs = 2000, onSave }: UseAuto
 
         timeoutRef.current = setTimeout(() => {
             try {
-                localStorage.setItem(key, encodeDraft(data));
+                localStorage.setItem(key, encodeDraft(parsedData));
                 setLastSaved(Date.now());
                 setIsSaving(false);
-                onSave?.(data);
+                onSave?.(parsedData);
             } catch (error) {
                 console.error('Erro ao salvar rascunho:', error);
                 setIsSaving(false);
@@ -40,7 +49,7 @@ export function useAutoSave<T>({ key, data, debounceMs = 2000, onSave }: UseAuto
                 clearTimeout(timeoutRef.current);
             }
         };
-    }, [data, key, debounceMs, onSave]);
+    }, [dataString, key, debounceMs, onSave]);
 
     return { isSaving, lastSaved };
 }

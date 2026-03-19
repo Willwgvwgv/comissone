@@ -3,6 +3,7 @@ import React from 'react';
 import { LogOut, User as UserIcon, Building2, Bell, Trash2, Eraser, Sparkles, Wand2 } from 'lucide-react';
 import { User, UserRole } from '../types';
 import { NAV_ITEMS } from '../constants';
+import { formatCurrency } from '../src/utils/formatters';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -30,10 +31,10 @@ const Layout: React.FC<LayoutProps> = ({
   const filteredNavItems = NAV_ITEMS.filter(item => item.roles.includes(currentUser.role));
 
   return (
-    <div className="flex h-screen bg-slate-50">
-      {/* Sidebar */}
-      <aside className="w-72 bg-white border-r border-slate-200 flex flex-col hidden md:flex shrink-0">
-        <div className="p-5 border-b border-slate-200 bg-white">
+    <div className="flex h-screen bg-transparent page-transition">
+      {/* Sidebar - Glassmorphism */}
+      <aside className="w-72 bg-white/70 backdrop-blur-xl border-r border-white/50 shadow-[4px_0_24px_-6px_rgba(0,0,0,0.05)] flex flex-col hidden md:flex shrink-0 relative z-20">
+        <div className="p-5 border-b border-white/30 bg-transparent">
           <div className="leading-tight min-w-0">
             <span className="text-lg font-semibold text-slate-900 tracking-tight">comissOne</span>
             <p className="text-[10px] text-slate-500 tracking-wider font-medium uppercase">Gestão imobiliária</p>
@@ -59,9 +60,9 @@ const Layout: React.FC<LayoutProps> = ({
                       setActiveView(item.id);
                     }
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 min-w-0 ${isExpanded
-                    ? 'bg-blue-50 text-blue-600 font-semibold shadow-sm'
-                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 min-w-0 sidebar-item ${isExpanded
+                    ? 'bg-blue-50/80 text-blue-600 font-semibold shadow-sm backdrop-blur-sm border border-blue-100/50'
+                    : 'text-slate-500 hover:text-slate-800'
                     }`}
                 >
                   <div className="shrink-0">{item.icon}</div>
@@ -101,31 +102,31 @@ const Layout: React.FC<LayoutProps> = ({
           })}
         </nav>
 
-        <div className="p-4 border-t border-slate-100">
-          <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4 shadow-sm min-w-0">
+        <div className="p-4 border-t border-white/30">
+          <div className="bg-white/60 backdrop-blur-md border border-white/80 rounded-xl p-4 mb-4 shadow-sm min-w-0 transition-transform hover:-translate-y-1 duration-300">
             <p className="text-xs text-slate-500 mb-1">Logado como</p>
             <p className="text-sm font-semibold text-slate-800 truncate" title={currentUser.name}>{currentUser.name}</p>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase mt-2 inline-block ${currentUser.role === UserRole.ADMIN ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase mt-2 inline-block shadow-sm ${currentUser.role === UserRole.ADMIN ? 'bg-indigo-100/80 text-indigo-700' : 'bg-emerald-100/80 text-emerald-700'
               }`}>
               {currentUser.role}
             </span>
           </div>
           <button
             onClick={onLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+            className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-red-500 hover:bg-red-50/50 hover:shadow-sm rounded-xl transition-all duration-300 backdrop-blur-sm"
           >
-            <LogOut size={20} />
-            <span className="text-sm">Sair</span>
+            <LogOut size={20} className="group-hover:scale-110 transition-transform" />
+            <span className="text-sm font-medium">Sair</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Topbar */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 z-10">
+      <main className="flex-1 flex flex-col overflow-hidden relative z-10">
+        {/* Topbar - Glassmorphism */}
+        <header className="h-16 bg-white/70 backdrop-blur-xl border-b border-white/50 shadow-sm flex items-center justify-between px-8 z-30">
           <div className="flex items-center gap-4">
-            <h2 className="text-lg font-bold text-slate-800">
+            <h2 className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-600 tracking-tight">
               {(() => {
                 const item = NAV_ITEMS.find(i => i.id === activeView);
                 if (item) return item.label;
@@ -254,8 +255,10 @@ const Layout: React.FC<LayoutProps> = ({
         </header>
 
         {/* Page Content */}
-        <div className={`flex-1 bg-slate-50/50 ${activeView.startsWith('financial') ? 'overflow-hidden p-0' : 'overflow-y-auto p-8'}`}>
-          {children}
+        <div className={`flex-1 bg-transparent ${activeView.startsWith('financial') ? 'overflow-hidden p-0' : 'overflow-y-auto p-8'}`}>
+          <div className="max-w-7xl mx-auto">
+            {children}
+          </div>
         </div>
       </main>
     </div>
