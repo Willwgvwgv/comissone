@@ -10,17 +10,56 @@
   --color-bg-sidebar: #1E293B;
 
   --color-text-primary: #1E293B;
-  --color-text-secondary: #64748B;
+  --color-text-secondary: #526177;
   --color-text-muted: #94A3B8;
 
   --color-status-success: #10B981;
   --color-status-warning: #F59E0B;
   --color-status-error: #EF4444;
   --color-status-info: #3B82F6;
+
+  /* M3 Design System Tokens */
+  --color-m3-primary: #004e9c;
+  --color-m3-on-primary: #ffffff;
+  --color-m3-primary-container: #1566c3;
+  --color-m3-on-primary-container: #dde7ff;
+  --color-m3-surface: #f9f9ff;
+  --color-m3-on-surface: #191c21;
+  --color-m3-surface-variant: #e1e2ea;
+  --color-m3-on-surface-variant: #424752;
+  --color-m3-outline: #727784;
+  --color-m3-outline-variant: #c2c6d4;
+  --color-m3-surface-container-low: #f2f3fc;
+  --color-m3-surface-container: #ecedf6;
+  --color-m3-surface-container-high: #e7e8f0;
+  --color-m3-tertiary-fixed: #ffdbc9;
+  --color-m3-on-tertiary-fixed-variant: #753400;
+  --color-m3-error: #ba1a1a;
+  --color-m3-on-error: #ffffff;
+  --color-m3-error-container: #ffdad6;
+  --color-m3-on-error-container: #410002;
   
   --animate-spin-slow: spin-slow 8s linear infinite;
   --animate-fade-in: fadeIn 0.4s ease-out;
   --animate-slide-up: slideUp 0.4s ease-out;
+}
+
+/* Dark Mode Overrides */
+.dark {
+  --color-bg-main: #020617;
+  --color-bg-card: rgba(15, 23, 42, 0.85);
+  --color-bg-sidebar: #000000;
+  
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+
+  --color-m3-surface: #111418;
+  --color-m3-on-surface: #e2e2e9;
+  --color-m3-surface-container: #1e1f25;
+  --color-m3-surface-container-low: #191c21;
+  --color-m3-surface-container-high: #24262d;
+  --color-m3-outline: #8c909c;
 }
 
 @keyframes spin-slow {
@@ -40,12 +79,18 @@
 
 html, body {
   background-color: var(--color-bg-main);
-  background-image: radial-gradient(at 0% 0%, hsla(210, 100%, 95%, 0.8) 0px, transparent 50%),
-                    radial-gradient(at 100% 0%, hsla(160, 100%, 93%, 0.8) 0px, transparent 50%);
+  background-image: radial-gradient(at 0% 0%, hsla(210, 100%, 95%, 0.1) 0px, transparent 50%),
+                    radial-gradient(at 100% 0%, hsla(160, 100%, 93%, 0.1) 0px, transparent 50%);
   background-attachment: fixed;
   color: var(--color-text-primary);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.dark html, .dark body {
+  background-image: radial-gradient(at 0% 0%, hsla(210, 100%, 20%, 0.2) 0px, transparent 50%),
+                    radial-gradient(at 100% 0%, hsla(160, 100%, 20%, 0.2) 0px, transparent 50%);
 }
 
 /* Custom Scrollbar */
@@ -70,6 +115,25 @@ html, body {
 a, button, [role="button"], .clickable {
   cursor: pointer;
   transition: all 0.25s ease;
+}
+
+/* Global Input Reset to prevent black/default borders */
+input, select, textarea {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Chrome/Safari Autofill background/border reset */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px white inset !important;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
 /* Glassmorphism Card Base */

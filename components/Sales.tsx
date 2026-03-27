@@ -29,16 +29,18 @@ import {
   FileX,
   AlertCircle,
   FileX2,
-  CheckCircle
+  CheckCircle,
+  RefreshCw
 } from 'lucide-react';
 
 import { useAutoSave, loadDraft, clearDraft } from '../src/hooks/useAutoSave';
 import { AutoSaveIndicator } from './SupportComponents';
 import { useSanitize } from '../src/hooks/useSanitize';
 import { formatCurrency, formatCpfCnpjInput } from '../src/utils/formatters';
+import { useFinancial } from '../src/lib/useFinancial';
+import SearchableContactSelect from './financial/SearchableContactSelect';
 
-
-import { Sale, User, UserRole, CommissionStatus, BrokerSplit, SaleStatus } from '../types';
+import { Sale, User, UserRole, CommissionStatus, BrokerSplit, SaleStatus, FinancialContact } from '../types';
 import { maskCPF, sanitizeInput } from '../src/utils/securityUtils';
 
 
@@ -59,9 +61,13 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [saveFeedback, setSaveFeedback] = useState(false); // toast de venda salva
+  const [saveFeedback, setSaveFeedback] = useState(false);
 
-  // Estado para o modal de exclusão
+  // Contacts from financial module (reused)
+  const { contacts, addContact } = useFinancial(currentUser.agency_id);
+  const clientContacts = contacts.filter(c => c.is_active && (c.type === 'CLIENT' || c.type === 'BOTH'));
+
+  // Estado para o modal de exclusÃƒÂ£o
   const [saleToDelete, setSaleToDelete] = useState<string | null>(null);
 
   // Estados para Filtros
@@ -69,13 +75,23 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [onlyInstallments, setOnlyInstallments] = useState(false);
-  const [showCanceledSales, setShowCanceledSales] = useState(false); // Padrão: Ocultar canceladas
+  const [showCanceledSales, setShowCanceledSales] = useState(false);
+  const [filterContactId, setFilterContactId] = useState<string>('');
 
-  // Lógica de Filtragem
+  // Auditoria
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+  const [selectedSaleForAudit, setSelectedSaleForAudit] = useState<Sale | null>(null);
+
+  // Build a map of contact names for display enrichment
+  const contactNameMap = useMemo(() => new Map(contacts.map(c => [c.id, c.name])), [contacts]);
+
+  // LÃƒÂ³gica de Filtragem
   const filteredSales = useMemo(() => {
     let result = [...sales];
 
-    // 0. Filtro de Canceladas (Se não marcado, remove canceladas)
+    // 0. Filtro de Canceladas
     if (!showCanceledSales) {
       result = result.filter(s => s.status !== SaleStatus.CANCELED);
     }
@@ -85,14 +101,23 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
       result = result.filter(s => s.is_installment);
     }
 
+    // 0.2 Filtro por Cliente
+    if (filterContactId) {
+      result = result.filter(s => s.client_contact_id === filterContactId);
+    }
 
-    // 1. Busca por texto
+    // 1. Busca por texto (inclui nome do contato vinculado)
     if (searchTerm) {
-      result = result.filter(s =>
-        s.property_address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.buyer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.seller_name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      const term = searchTerm.toLowerCase();
+      result = result.filter(s => {
+        const contactName = s.client_contact_id ? (contactNameMap.get(s.client_contact_id) || '') : '';
+        return (
+          s.property_address.toLowerCase().includes(term) ||
+          (s.buyer_name || '').toLowerCase().includes(term) ||
+          (s.seller_name || '').toLowerCase().includes(term) ||
+          contactName.toLowerCase().includes(term)
+        );
+      });
     }
 
     // 2. Filtro de Período
@@ -120,7 +145,7 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
     });
 
     return result;
-  }, [sales, searchTerm, period, startDate, endDate]);
+  }, [sales, searchTerm, period, startDate, endDate, showCanceledSales, onlyInstallments, filterContactId, contactNameMap]);
 
   // KPIs baseados nos dados filtrados
   const kpis = useMemo(() => {
@@ -165,11 +190,12 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
 
 
 
-  // Estado para Nova Venda / Edição
+  // Estado para Nova Venda / EdiÃƒÂ§ÃƒÂ£o
   const defaultNewSale: Partial<Sale> = {
     sale_date: new Date().toISOString().split('T')[0],
     commission_percentage: 6,
-    splits: [],
+    client_contact_id: null,
+    seller_contact_id: null,
     invoice_issued: false,
     invoice_number: '',
     is_installment: false,
@@ -191,7 +217,7 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
     debounceMs: 2000
   });
 
-  // Verificar rascunho ao carregar (Restauração Automática e Silenciosa)
+  // Verificar rascunho ao carregar (RestauraÃƒÂ§ÃƒÂ£o AutomÃƒÂ¡tica e Silenciosa)
   useEffect(() => {
     if (!editingSale) {
       const draft = loadDraft<{ newSale: Partial<Sale>; installmentConfig: any }>(DRAFT_KEY);
@@ -303,7 +329,40 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
       ...prev,
       splits: [...(prev.splits || []), newSplit]
     }));
-    setCurrentSplit({ brokerId: '', percentage: 100 });
+
+    // Reset current split with remaining percentage
+    const nextTotal = (newSale.splits?.reduce((a, b) => a + b.percentage, 0) || 0) + currentSplit.percentage;
+    const remaining = Math.max(0, 100 - nextTotal);
+    
+    setCurrentSplit({ 
+      brokerId: '', 
+      percentage: remaining > 0 ? remaining : 100 
+    });
+  };
+
+  const handleSmartSplit = () => {
+    const currentTotal = newSale.splits?.reduce((a, b) => a + b.percentage, 0) || 0;
+    const remaining = 100 - currentTotal;
+    if (remaining <= 0) return;
+
+    const vgv = Number(newSale.vgv) || 0;
+    const totalComm = (vgv * (Number(newSale.commission_percentage) || 0)) / 100;
+    const splitValue = (totalComm * remaining) / 100;
+
+    const agencySplit: BrokerSplit = {
+      id: `temp-agency-${Date.now()}`,
+      broker_id: null,
+      broker_name: "Agência (Imobiliária)",
+      percentage: remaining,
+      calculated_value: splitValue,
+      status: CommissionStatus.PENDING
+    };
+
+    setNewSale(prev => ({
+      ...prev,
+      splits: [...(prev.splits || []), agencySplit]
+    }));
+    setCurrentSplit({ brokerId: '', percentage: 0 });
   };
 
 
@@ -339,7 +398,9 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
             invoice_number: sanitized.invoice_number || '',
             notes: sanitized.notes,
             is_installment: sanitized.is_installment || false,
-            installments: sanitized.installments || []
+            installments: sanitized.installments || [],
+            client_contact_id: newSale.client_contact_id || null,
+            seller_contact_id: newSale.seller_contact_id || null,
           })
           .eq('id', editingSale.id);
 
@@ -365,7 +426,9 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
             invoice_number: sanitized.invoice_number || '',
             notes: sanitized.notes,
             is_installment: sanitized.is_installment || false,
-            installments: sanitized.installments || []
+            installments: sanitized.installments || [],
+            client_contact_id: newSale.client_contact_id || null,
+            seller_contact_id: newSale.seller_contact_id || null,
           }])
           .select()
           .single();
@@ -484,7 +547,7 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
       const errorMsg = error instanceof Error ? error.message :
         (typeof error === 'object' && error !== null && 'message' in error) ? (error as any).message :
           JSON.stringify(error);
-      alert(`Erro ao salvar venda no banco de dados: ${errorMsg}\n\nA venda será mantida apenas temporariamente no seu navegador.`);
+      alert(`Erro ao salvar venda no banco de dados: ${errorMsg}\n\nA venda serÃƒÂ¡ mantida apenas temporariamente no seu navegador.`);
     }
   };
 
@@ -500,7 +563,7 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
           const existing = uniqueSplitsMap.get(split.broker_id)!;
           existing.calculated_value += split.calculated_value;
         } else {
-          // Criar cópia para não mutar o original
+          // Criar cÃƒÂ³pia para não mutar o original
           uniqueSplitsMap.set(split.broker_id, { ...split });
         }
       });
@@ -559,16 +622,16 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
   const handleDistrato = async (sale: Sale) => {
     console.log('Distrato clicked for sale:', sale.id);
 
-    // Verificação de ID local
+    // VerificaÃƒÂ§ÃƒÂ£o de ID local
     if (sale.id.startsWith('local-')) {
-      if (confirm('ATENÇÃO: Esta venda é local (não salva no banco). \n\nDeseja REMOVÊ-LA definitivamente?\n\nIsso apagará a venda e todas as comissões associadas da sua tela. Essa ação não pode ser desfeita.')) {
+      if (confirm('ATENÃƒâ€¡ÃƒÆ’O: Esta venda ÃƒÂ© local (não salva no banco). \n\nDeseja REMOVÃƒÅ -LA definitivamente?\n\nIsso apagarÃƒÂ¡ a venda e todas as comissões associadas da sua tela. Essa aÃƒÂ§ÃƒÂ£o não pode ser desfeita.')) {
         setSales(prev => prev.filter(s => s.id !== sale.id));
         alert('Venda local removida.');
       }
       return;
     }
 
-    if (confirm(`Deseja marcar a venda do imóvel em ${sale.property_address} como Distrato? Isso cancelará TODAS as comissões vinculadas (pagas e pendentes).`)) {
+    if (confirm(`Deseja marcar a venda do imóvel em ${sale.property_address} como Distrato? Isso cancelarÃƒÂ¡ TODAS as comissões vinculadas (pagas e pendentes).`)) {
       try {
         console.log('User confirmed distrato');
         const { supabase } = await import('../src/lib/supabaseClient');
@@ -612,6 +675,27 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
     }
   };
 
+  const openAuditModal = async (sale: Sale) => {
+    setSelectedSaleForAudit(sale);
+    setIsAuditModalOpen(true);
+    setLoadingAudit(true);
+    try {
+      const { supabase } = await import('../src/lib/supabaseClient');
+      const { data, error } = await supabase
+        .from('sales_audit_log')
+        .select('*')
+        .eq('sale_id', sale.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setAuditLogs(data || []);
+    } catch (error) {
+      console.error('Error fetching audit logs:', error);
+    } finally {
+      setLoadingAudit(false);
+    }
+  };
+
   const handleExportCSV = () => {
     const headers = [
       "Data Venda",
@@ -619,7 +703,7 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
       "CPF/CNPJ Comprador",
       "Vendedor",
       "CPF/CNPJ Vendedor",
-      "Endereço Imóvel",
+      "EndereÃƒÂ§o ImÃƒÂ³vel",
       "Nota Fiscal",
       "VGV",
       "Comissão Total"
@@ -658,89 +742,106 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
     <div className="space-y-6 page-transition">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="header-title">Controle de Vendas</h1>
+          <h1 className="header-title">Controle de Vendas <span className="text-[10px] bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full ml-2 align-middle">v2.2</span></h1>
           <p className="header-subtitle">Visualize e gerencie todos os contratos e rateios</p>
         </div>
       </div>
-      {/* KPI Header Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="card-base relative overflow-hidden group">
-          <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
-            <Building2 size={100} className="text-blue-600" />
+      {/* M3 KPI Header Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="bg-m3-surface-container-low p-6 rounded-[24px] border border-m3-outline-variant/30 flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="w-12 h-12 bg-m3-primary-container text-m3-on-primary-container rounded-2xl flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-2xl">home</span>
           </div>
-          <div className="flex items-center justify-between mb-4 relative z-10">
-            <div className="p-2.5 bg-gradient-to-br from-blue-500/20 to-blue-600/5 text-blue-600 rounded-xl border border-blue-500/20 shadow-inner">
-              <Building2 size={24} />
-            </div>
+          <div>
+            <p className="text-xs font-bold text-m3-on-surface-variant uppercase tracking-widest mb-1">Comissões Imobiliária</p>
+            <p className="text-xl font-black text-m3-on-surface">{formatCurrency(kpis.agencyComm)}</p>
           </div>
-          <p className="text-sm font-medium text-slate-500 mb-1 relative z-10">Comissões Imobiliária</p>
-          <p className="text-2xl font-bold text-slate-800 relative z-10">{formatCurrency(kpis.agencyComm)}</p>
         </div>
 
-        <div className="card-base relative overflow-hidden group">
-          <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
-            <Wallet size={100} className="text-indigo-600" />
+        <div className="bg-m3-surface-container-low p-6 rounded-[24px] border border-m3-outline-variant/30 flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="w-12 h-12 bg-m3-secondary-container text-m3-on-secondary-container rounded-2xl flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-2xl">payments</span>
           </div>
-          <div className="flex items-center justify-between mb-4 relative z-10">
-            <div className="p-2.5 bg-gradient-to-br from-indigo-500/20 to-indigo-600/5 text-indigo-600 rounded-xl border border-indigo-500/20 shadow-inner">
-              <Wallet size={24} />
-            </div>
+          <div>
+            <p className="text-xs font-bold text-m3-on-surface-variant uppercase tracking-widest mb-1">Comissão Total Gerada</p>
+            <p className="text-xl font-black text-m3-on-surface">{formatCurrency(kpis.totalComm)}</p>
           </div>
-          <p className="text-sm font-medium text-slate-500 mb-1 relative z-10">Comissão Total Gerada</p>
-          <p className="text-2xl font-bold text-slate-800 relative z-10">{formatCurrency(kpis.totalComm)}</p>
         </div>
 
-        <div className="card-base relative overflow-hidden group">
-          <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
-            <FileX2 size={100} className="text-red-600" />
+        <div className="bg-m3-surface-container-low p-6 rounded-[24px] border border-m3-outline-variant/30 flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="w-12 h-12 bg-m3-error-container text-m3-on-error-container rounded-2xl flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-2xl">receipt_long</span>
           </div>
-          <div className="flex items-center justify-between mb-4 relative z-10">
-            <div className="p-2.5 bg-gradient-to-br from-red-500/20 to-red-600/5 text-red-600 rounded-xl border border-red-500/20 shadow-inner">
-              <FileX2 size={24} />
-            </div>
+          <div>
+            <p className="text-xs font-bold text-m3-on-surface-variant uppercase tracking-widest mb-1">Vendas sem Nota</p>
+            <p className="text-xl font-black text-m3-error">{kpis.salesWithoutInvoice}</p>
           </div>
-          <p className="text-sm font-medium text-slate-500 mb-1 relative z-10">Vendas sem Nota</p>
-          <p className="text-2xl font-bold text-red-600 relative z-10">{kpis.salesWithoutInvoice}</p>
         </div>
 
-        <div className="card-base relative overflow-hidden group">
-          <div className="absolute top-0 right-[-10px] p-3 opacity-5 group-hover:scale-110 transition-transform duration-500 group-hover:rotate-6">
-            <ShoppingCart size={100} className="text-slate-600" />
+        <div className="bg-m3-surface-container-low p-6 rounded-[24px] border border-m3-outline-variant/30 flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="w-12 h-12 bg-m3-tertiary-container text-m3-on-tertiary-container rounded-2xl flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-2xl">shopping_cart</span>
           </div>
-          <div className="flex items-center justify-between mb-4 relative z-10">
-            <div className="p-2.5 bg-gradient-to-br from-slate-400/20 to-slate-500/5 text-slate-600 rounded-xl border border-slate-400/20 shadow-inner">
-              <ShoppingCart size={24} />
-            </div>
+          <div>
+            <p className="text-xs font-bold text-m3-on-surface-variant uppercase tracking-widest mb-1">Vendas Totais</p>
+            <p className="text-xl font-black text-m3-on-surface">{kpis.count}</p>
           </div>
-          <p className="text-sm font-medium text-slate-500 mb-1 relative z-10">Vendas Totais</p>
-          <p className="text-2xl font-bold text-slate-800 relative z-10">{kpis.count}</p>
         </div>
       </div>
 
 
 
 
-      {/* Control Bar & Filtros */}
-      <div className="card-base mb-6 backdrop-blur-xl">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex flex-1 items-center gap-3 w-full sm:w-auto bg-slate-50/80 p-1.5 rounded-2xl border border-slate-100">
-            <div className="relative flex-1 max-lg">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input
-                type="text"
-                placeholder="Buscar por imóvel ou comprador..."
-                className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-100 outline-none transition-all shadow-sm text-sm"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
+      {/* M3 Control Bar & Filters */}
+      <div className="bg-m3-surface-container-low p-4 rounded-[28px] border border-m3-outline-variant shadow-sm mb-6">
+        <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-4">
+          
+          {/* Search Field */}
+          <div className="flex-1 relative group">
+            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-m3-on-surface-variant group-focus-within:text-m3-primary transition-colors">search</span>
+            <input
+              type="text"
+              placeholder="Buscar por imóvel, cliente ou vendedor..."
+              className="w-full pl-12 pr-4 py-3 bg-white border border-m3-outline-variant rounded-2xl focus:ring-2 focus:ring-m3-primary/20 focus:border-m3-primary outline-none transition-all text-sm font-medium text-m3-on-surface"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
 
-            <div className="flex items-center bg-white border border-slate-200 rounded-xl px-2">
-              <Calendar size={16} className="text-slate-400 ml-2" />
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Client Filter Selector */}
+            {clientContacts.length > 0 && (
+              <div className="flex items-center bg-white border border-m3-outline-variant rounded-2xl px-3 group focus-within:border-m3-primary transition-colors">
+                <span className="material-symbols-outlined text-m3-on-surface-variant group-focus-within:text-m3-primary text-lg">person</span>
+                <select
+                  value={filterContactId}
+                  onChange={(e) => setFilterContactId(e.target.value)}
+                  className="bg-transparent text-sm font-bold text-m3-on-surface-variant px-2 py-3 outline-none cursor-pointer max-w-[180px]"
+                >
+                  <option value="">Todos os clientes</option>
+                  {clientContacts.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                {filterContactId && (
+                  <button
+                    type="button"
+                    onClick={() => setFilterContactId('')}
+                    className="text-m3-on-surface-variant hover:text-red-500 p-1 rounded-full transition-colors leading-none"
+                  >
+                    <span className="material-symbols-outlined text-sm">close</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Period Selector */}
+            <div className="flex items-center bg-white border border-m3-outline-variant rounded-2xl px-3 group focus-within:border-m3-primary transition-colors">
+              <span className="material-symbols-outlined text-m3-on-surface-variant group-focus-within:text-m3-primary text-lg">calendar_month</span>
               <select
                 value={period}
                 onChange={(e) => setPeriod(e.target.value)}
-                className="bg-transparent text-sm font-medium text-slate-600 px-3 py-2.5 outline-none cursor-pointer"
+                className="bg-transparent text-sm font-bold text-m3-on-surface-variant px-2 py-3 outline-none cursor-pointer"
               >
                 <option value="all">Período Total</option>
                 <option value="month">Este Mês</option>
@@ -750,75 +851,80 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
               </select>
             </div>
 
+            {/* Export CSV Button */}
             <button
               onClick={handleExportCSV}
-              className="flex items-center justify-center p-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 hover:text-slate-800 hover:underline transition-all shadow-sm"
+              className="p-3 bg-white border border-m3-outline-variant rounded-2xl text-m3-on-surface-variant hover:bg-m3-primary/5 hover:text-m3-primary transition-all flex items-center justify-center shadow-sm"
               title="Exportar Listados"
             >
-              <Download size={18} />
+              <span className="material-symbols-outlined">download</span>
+            </button>
+
+            {/* New Sale Button */}
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="bg-m3-primary text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-m3-primary/20"
+            >
+              <span className="material-symbols-outlined">add</span>
+              Nova Venda
             </button>
           </div>
-
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="btn-primary w-full sm:w-auto flex items-center justify-center gap-2"
-          >
-            <Plus size={20} /> Nova Venda
-          </button>
         </div>
 
+        {/* Custom Range Pop-down */}
         {period === 'custom' && (
-          <div className="flex items-center gap-3 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="mt-4 flex items-center gap-4 bg-white p-4 rounded-2xl border border-m3-outline-variant animate-in slide-in-from-top-2 duration-300">
             <div className="flex items-center gap-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Início:</label>
+              <label className="text-[10px] font-bold text-m3-on-surface-variant uppercase tracking-widest">Início:</label>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="bg-slate-50 text-xs font-semibold text-slate-600 px-3 py-1.5 rounded-lg border border-slate-200 outline-none focus:ring-1 focus:ring-blue-400"
+                className="bg-m3-surface-container-low text-xs font-bold text-m3-on-surface px-3 py-2 rounded-xl border border-m3-outline-variant outline-none focus:ring-2 focus:ring-m3-primary"
               />
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fim:</label>
+              <label className="text-[10px] font-bold text-m3-on-surface-variant uppercase tracking-widest">Fim:</label>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="bg-slate-50 text-xs font-semibold text-slate-600 px-3 py-1.5 rounded-lg border border-slate-200 outline-none focus:ring-1 focus:ring-blue-400"
+                className="bg-m3-surface-container-low text-xs font-bold text-m3-on-surface px-3 py-2 rounded-xl border border-m3-outline-variant outline-none focus:ring-2 focus:ring-m3-primary"
               />
             </div>
           </div>
         )}
       </div>
 
-      <div className="flex items-center gap-4 mb-2">
-        <label className="flex items-center gap-2 cursor-pointer group">
-          <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${onlyInstallments ? 'bg-blue-600 border-blue-600' : 'bg-white border-slate-300 group-hover:border-blue-400'}`}>
-            {onlyInstallments && <CheckCircle size={14} className="text-white" />}
+      {/* Toggles / Quick Filters */}
+      <div className="flex flex-wrap items-center gap-6 mb-6 px-2">
+        <label className="flex items-center gap-3 cursor-pointer group">
+          <div className="relative inline-flex items-center cursor-pointer">
+            <input 
+              type="checkbox" 
+              className="sr-only peer" 
+              checked={onlyInstallments}
+              onChange={(e) => setOnlyInstallments(e.target.checked)}
+            />
+            <div className="w-10 h-5 bg-m3-outline-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-m3-primary"></div>
           </div>
-          <input
-            type="checkbox"
-            className="hidden"
-            checked={onlyInstallments}
-            onChange={(e) => setOnlyInstallments(e.target.checked)}
-          />
-          <span className={`text-sm font-medium transition-all ${onlyInstallments ? 'text-blue-700' : 'text-slate-600 group-hover:text-blue-600 group-hover:underline'}`}>
-            Mostrar apenas vendas parceladas
+          <span className={`text-sm font-bold transition-all ${onlyInstallments ? 'text-m3-primary' : 'text-m3-on-surface-variant group-hover:text-m3-on-surface'}`}>
+            Apenas parceladas
           </span>
         </label>
 
-        <label className="flex items-center gap-2 cursor-pointer group">
-          <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${showCanceledSales ? 'bg-red-500 border-red-500' : 'bg-white border-slate-300 group-hover:border-red-400'}`}>
-            {showCanceledSales && <CheckCircle size={14} className="text-white" />}
+        <label className="flex items-center gap-3 cursor-pointer group">
+          <div className="relative inline-flex items-center cursor-pointer">
+            <input 
+              type="checkbox" 
+              className="sr-only peer" 
+              checked={showCanceledSales}
+              onChange={(e) => setShowCanceledSales(e.target.checked)}
+            />
+            <div className="w-10 h-5 bg-m3-outline-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-m3-error"></div>
           </div>
-          <input
-            type="checkbox"
-            className="hidden"
-            checked={showCanceledSales}
-            onChange={(e) => setShowCanceledSales(e.target.checked)}
-          />
-          <span className={`text-sm font-medium transition-all ${showCanceledSales ? 'text-red-600' : 'text-slate-600 group-hover:text-red-500 group-hover:underline'}`}>
-            Exibir vendas canceladas/distratos
+          <span className={`text-sm font-bold transition-all ${showCanceledSales ? 'text-m3-error' : 'text-m3-on-surface-variant group-hover:text-m3-on-surface'}`}>
+            Exibir canceladas / distratos
           </span>
         </label>
       </div>
@@ -826,19 +932,19 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
 
 
       {/* Sales Table */}
-      <div className="card-base p-0 overflow-hidden">
+      <div className="bg-m3-surface-container-low rounded-[28px] border border-m3-outline-variant/30 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="table-base">
+          <table className="w-full border-collapse">
             <thead>
-              <tr className="bg-transparent text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em] border-b border-black/5">
-                <th className="px-10 py-8">DATA</th>
-                <th className="px-10 py-8">IMÓVEL</th>
-                <th className="px-6 py-8">COMPRADOR</th>
-                <th className="px-6 py-8">VENDEDOR</th>
-                <th className="px-6 py-8">VGV</th>
-                <th className="px-6 py-8">PARCELAS</th>
-                <th className="px-6 py-8">NF</th>
-                <th className="px-10 py-8 text-right">AÇÕES</th>
+              <tr className="bg-m3-surface-container text-[11px] font-black text-m3-on-surface-variant uppercase tracking-[0.15em] border-b border-m3-outline-variant/20">
+                <th className="px-8 py-5 text-left">Data</th>
+                <th className="px-8 py-5 text-left">Imóvel</th>
+                <th className="px-6 py-5 text-left">Cliente</th>
+                <th className="px-6 py-5 text-left">Vendedor</th>
+                <th className="px-6 py-5 text-left">VGV</th>
+                <th className="px-6 py-5 text-left text-center">Parcelas</th>
+                <th className="px-6 py-5 text-left text-center">NF</th>
+                <th className="px-8 py-5 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -863,9 +969,14 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
                   <td className="px-6 py-8">
                     <div className="flex flex-col">
                       <span className={`text-sm font-medium ${sale.status === SaleStatus.CANCELED ? 'text-slate-400' : 'text-slate-600'}`}>
-                        {sale.buyer_name}
+                        {sale.client_contact_id
+                          ? (contactNameMap.get(sale.client_contact_id) || sale.buyer_name || '-')
+                          : (sale.buyer_name || '-')}
                       </span>
-                      {sale.buyer_cpf && (
+                      {sale.client_contact_id && (
+                        <span className="text-[9px] text-blue-400 font-black uppercase tracking-widest mt-0.5">Contato vinculado</span>
+                      )}
+                      {!sale.client_contact_id && sale.buyer_cpf && (
                         <span className="text-[10px] text-slate-400 font-bold font-mono mt-1">
                           {maskCPF(sale.buyer_cpf)}
                         </span>
@@ -875,8 +986,13 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
                   <td className="px-6 py-8">
                     <div className="flex flex-col">
                       <span className={`text-sm font-medium ${sale.status === SaleStatus.CANCELED ? 'text-slate-400' : 'text-slate-600'}`}>
-                        {sale.seller_name}
+                        {sale.seller_contact_id
+                          ? (contactNameMap.get(sale.seller_contact_id) || sale.seller_name || '-')
+                          : (sale.seller_name || '-')}
                       </span>
+                      {sale.seller_contact_id && (
+                        <span className="text-[9px] text-blue-400 font-black uppercase tracking-widest mt-0.5">Contato vinculado</span>
+                      )}
                       {sale.seller_cpf && (
                         <span className="text-[10px] text-slate-400 font-bold font-mono mt-1">
                           {maskCPF(sale.seller_cpf)}
@@ -907,41 +1023,41 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
                       <span className="text-xs text-slate-400 font-medium ml-2">-</span>
                     )}
                   </td>
-                  <td className="px-6 py-8">
+                  <td className="px-6 py-5 text-center">
                     {sale.invoice_issued ? (
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${sale.status === SaleStatus.CANCELED
-                        ? 'bg-slate-100 text-slate-400 border-slate-200'
-                        : 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${sale.status === SaleStatus.CANCELED
+                        ? 'bg-m3-surface-container text-m3-on-surface-variant border-m3-outline-variant/30'
+                        : 'bg-m3-primary-container text-m3-on-primary-container border-m3-primary/10'
                         }`}>
-                        <FileCheck size={12} /> Sim
+                        <span className="material-symbols-outlined text-sm">fact_check</span> {sale.invoice_number ? `NF: ${sale.invoice_number}` : 'Sim'}
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 bg-slate-50 text-slate-400 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border border-slate-100">
-                        <FileX size={12} /> Não
+                      <span className="inline-flex items-center gap-1.5 bg-m3-surface-container-low text-m3-on-surface-variant px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border border-m3-outline-variant/20">
+                        <span className="material-symbols-outlined text-sm">event_busy</span> Não
                       </span>
                     )}
                   </td>
-                  <td className="px-10 py-8 text-right flex items-center justify-end gap-3">
-                    <div className="flex items-center gap-1.5 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+                  <td className="px-8 py-5 text-right flex items-center justify-end gap-3 font-medium">
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-2xl border border-m3-outline-variant/20 shadow-sm">
                       {sale.status === SaleStatus.CANCELED && (
-                        <span className="text-[10px] font-black text-red-500 uppercase tracking-widest px-2 mr-1 bg-red-50 rounded-lg py-1">Cancelada</span>
+                        <span className="text-[10px] font-black text-m3-error uppercase tracking-widest px-2 mr-1 bg-m3-error-container/20 rounded-lg py-1">Cancelada</span>
                       )}
 
                       <button
                         onClick={() => openEditModal(sale)}
-                        className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
+                        className="p-2 text-m3-on-surface-variant hover:text-m3-primary hover:bg-m3-primary/10 rounded-xl transition-all"
                         title="Editar Venda"
                       >
-                        <Edit size={18} />
+                        <span className="material-symbols-outlined text-lg">edit</span>
                       </button>
 
                       {sale.status !== SaleStatus.CANCELED ? (
                         <button
                           onClick={() => handleDistrato(sale)}
-                          className="p-2 text-slate-400 hover:text-orange-500 hover:bg-orange-50 rounded-xl transition-all"
+                          className="p-2 text-m3-on-surface-variant hover:text-m3-error hover:bg-m3-error-container/20 rounded-xl transition-all"
                           title="Fazer Distrato (Venda Caída)"
                         >
-                          <FileX size={18} />
+                          <span className="material-symbols-outlined text-lg">block</span>
                         </button>
                       ) : (
                         <button
@@ -952,19 +1068,27 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
                               if (onRefetch) onRefetch();
                             }
                           }}
-                          className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all"
+                          className="p-2 text-m3-primary hover:bg-m3-primary/10 rounded-xl transition-all"
                           title="Reativar Venda"
                         >
-                          <CheckCircle size={18} />
+                          <span className="material-symbols-outlined text-lg">check_circle</span>
                         </button>
                       )}
 
                       <button
                         onClick={() => setSaleToDelete(sale.id)}
-                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                        className="p-2 text-m3-on-surface-variant hover:text-m3-error hover:bg-m3-error-container/20 rounded-xl transition-all"
                         title="Excluir Permanentemente"
                       >
-                        <Trash2 size={18} />
+                        <span className="material-symbols-outlined text-lg">delete</span>
+                      </button>
+
+                      <button
+                        onClick={() => openAuditModal(sale)}
+                        className="p-2 text-m3-on-surface-variant hover:text-m3-tertiary hover:bg-m3-tertiary-container/30 rounded-xl transition-all"
+                        title="Ver Histórico de Alterações"
+                      >
+                        <span className="material-symbols-outlined text-lg">history</span>
                       </button>
                     </div>
                   </td>
@@ -1014,279 +1138,509 @@ const Sales: React.FC<SalesProps> = ({ sales, setSales, currentUser, team, onRef
         )
       }
 
-      {/* Modal de Cadastro/Edição de Venda */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white/95 backdrop-blur-xl border border-white/60 w-full max-w-4xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in duration-200">
-            <div className="p-8 border-b border-black/5 flex items-center justify-between sticky top-0 bg-transparent z-10">
-              <div>
-                <h3 className="text-2xl font-black text-slate-800">{editingSale ? 'Editar Venda' : 'Nova Venda'}</h3>
-                <p className="text-sm text-slate-400 font-medium">Cadastre os detalhes do imóvel e o rateio de comissões.</p>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-m3-surface w-full max-w-6xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in duration-300">
+            
+            {/* Top Bar / Header */}
+            <header className="flex justify-between items-center px-8 h-16 bg-white border-b border-m3-outline-variant shrink-0">
+              <div className="flex items-center gap-4">
+                <button onClick={closeModal} className="text-m3-primary hover:bg-m3-primary/5 p-2 rounded-full transition-colors flex items-center gap-2">
+                  <span className="material-symbols-outlined text-xl">arrow_back</span>
+                  <span className="text-sm font-medium">Voltar para Vendas</span>
+                </button>
               </div>
-              <button onClick={closeModal} className="bg-slate-50 p-2 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
+              <div className="flex items-center gap-4">
+                <AutoSaveIndicator isSaving={isSaving} lastSaved={lastSaved} />
+                <button onClick={closeModal} className="text-m3-on-surface-variant hover:bg-m3-surface-variant p-2 rounded-full transition-colors leading-none">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+            </header>
+
+            <div className="flex-1 overflow-y-auto p-8 lg:p-12">
+              <div className="max-w-5xl mx-auto">
+                <div className="mb-10">
+                  <h1 className="text-3xl font-extrabold text-m3-on-surface tracking-tight">
+                    {editingSale ? 'Editar Venda' : 'Nova Venda'}
+                  </h1>
+                  <p className="text-m3-on-surface-variant text-lg">Cadastre os detalhes do imóvel e o rateio de comissões.</p>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                  {/* Left Column: Basic Info & Participants */}
+                  <div className="lg:col-span-7 space-y-6">
+                    
+                    {/* Card: Informações Básicas */}
+                    <section className="bg-m3-surface-container-low p-6 rounded-2xl border border-m3-outline-variant shadow-sm">
+                      <div className="flex items-center gap-2 mb-6 text-m3-primary">
+                        <span className="material-symbols-outlined">info</span>
+                        <h3 className="font-bold text-lg">Informações Básicas</h3>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-semibold mb-1 text-m3-on-surface-variant">Imóvel (Endereço / Unidade)</label>
+                          <input 
+                            type="text"
+                            value={newSale.property_address || ''}
+                            placeholder="Ex: Edifício Aurora, Apto 402"
+                            className="w-full bg-white border border-m3-outline-variant rounded-xl focus:ring-2 focus:ring-m3-primary focus:border-m3-primary outline-none px-4 py-2.5 text-sm font-medium"
+                            onChange={e => setNewSale({ ...newSale, property_address: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold mb-1 text-m3-on-surface-variant">VGV (Valor de Venda)</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-m3-on-surface-variant font-bold">R$</span>
+                            <input 
+                              type="text"
+                              value={new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(newSale.vgv || 0)}
+                              placeholder="0,00"
+                              className="w-full pl-10 pr-5 bg-white border border-m3-outline-variant rounded-xl focus:ring-2 focus:ring-m3-primary focus:border-m3-primary text-right px-4 py-2.5 font-black text-m3-on-surface"
+                              onChange={e => {
+                                const val = e.target.value.replace(/\D/g, '');
+                                setNewSale({ ...newSale, vgv: Number(val) / 100 });
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-sm font-semibold mb-1 text-m3-on-surface-variant">% Comissão</label>
+                            <input 
+                              type="number"
+                              value={newSale.commission_percentage || 6}
+                              placeholder="6.0"
+                              className="w-full bg-white border border-m3-outline-variant rounded-xl focus:ring-2 focus:ring-m3-primary focus:border-m3-primary px-4 py-2.5 text-sm font-black"
+                              onChange={e => setNewSale({ ...newSale, commission_percentage: Number(e.target.value) })}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold mb-1 text-m3-on-surface-variant">Data</label>
+                            <input 
+                              type="date"
+                              value={newSale.sale_date}
+                              className="w-full bg-white border border-m3-outline-variant rounded-xl focus:ring-2 focus:ring-m3-primary focus:border-m3-primary px-4 py-2.5 text-sm font-medium"
+                              onChange={e => setNewSale({ ...newSale, sale_date: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+
+                    {/* Card: Participantes e Configurações */}
+                    <section className="bg-m3-surface-container-low p-6 rounded-2xl border border-m3-outline-variant shadow-sm">
+                      <div className="flex items-center gap-2 mb-6 text-m3-primary">
+                        <span className="material-symbols-outlined">group_add</span>
+                        <h3 className="font-bold text-lg">Participantes e Configurações</h3>
+                      </div>
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* Comprador */}
+                          <div className="space-y-2">
+                            <label className="block text-sm font-semibold text-m3-on-surface-variant">Cliente Comprador</label>
+                            <SearchableContactSelect
+                              value={newSale.client_contact_id || null}
+                              onChange={(id, name) => {
+                                const contact = contacts.find(c => c.id === id);
+                                setNewSale({ 
+                                  ...newSale, 
+                                  client_contact_id: id, 
+                                  buyer_name: name || '',
+                                  buyer_cpf: contact?.document || newSale.buyer_cpf || '' 
+                                });
+                              }}
+                              onSaveNew={async (name) => {
+                                const newContact = await addContact({ name, type: 'CLIENT', is_active: true });
+                                return newContact;
+                              }}
+                              contacts={contacts}
+                              placeholder="Buscar comprador..."
+                            />
+                            <input
+                              type="text"
+                              value={newSale.buyer_cpf || ''}
+                              placeholder="Documento (CPF/CNPJ)"
+                              className="w-full px-4 py-2 bg-white border border-m3-outline-variant rounded-xl text-xs font-semibold"
+                              maxLength={18}
+                              onChange={e => setNewSale({ ...newSale, buyer_cpf: formatCpfCnpjInput(e.target.value) })}
+                            />
+                          </div>
+                          {/* Vendedor */}
+                          <div className="space-y-2">
+                            <label className="block text-sm font-semibold text-m3-on-surface-variant">Cliente Vendedor</label>
+                            <div className="flex flex-col gap-1.5">
+                              <SearchableContactSelect
+                                value={newSale.seller_contact_id || null}
+                                onChange={(id, name) => {
+                                  const contact = contacts.find(c => c.id === id);
+                                  setNewSale({ 
+                                    ...newSale, 
+                                    seller_contact_id: id, 
+                                    seller_name: name || '',
+                                    seller_cpf: contact?.document || newSale.seller_cpf || '' 
+                                  });
+                                }}
+                                onSaveNew={async (name) => {
+                                  const newContact = await addContact({ name, type: 'CLIENT', is_active: true });
+                                  return newContact;
+                                }}
+                                contacts={contacts}
+                                placeholder="Buscar vendedor..."
+                              />
+                              <input
+                                type="text"
+                                value={newSale.seller_cpf || ''}
+                                placeholder="Documento (CPF/CNPJ)"
+                                className="w-full px-4 py-2 bg-white border border-m3-outline-variant rounded-xl text-xs font-semibold"
+                                maxLength={18}
+                                onChange={e => setNewSale({ ...newSale, seller_cpf: formatCpfCnpjInput(e.target.value) })}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-m3-outline-variant pt-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Toggle NF */}
+                            <div className="p-4 bg-white rounded-xl border border-m3-outline-variant space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <span className="material-symbols-outlined text-m3-on-surface-variant">description</span>
+                                  <div>
+                                    <p className="font-semibold text-m3-on-surface">NF já emitida?</p>
+                                    <p className="text-xs text-m3-on-surface-variant">Nota fiscal processada</p>
+                                  </div>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                  <input 
+                                    type="checkbox" 
+                                    className="sr-only peer" 
+                                    checked={!!newSale.invoice_issued}
+                                    onChange={() => setNewSale({ ...newSale, invoice_issued: !newSale.invoice_issued, invoice_number: !newSale.invoice_issued ? '' : (newSale.invoice_number || '') })}
+                                  />
+                                  <div className="w-11 h-6 bg-m3-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-m3-primary transition-colors"></div>
+                                </label>
+                              </div>
+
+                              {newSale.invoice_issued && (
+                                <div className="pt-3 border-t border-m3-outline-variant/30 animate-in fade-in slide-in-from-top-1 duration-300">
+                                  <label className="text-[10px] font-black text-m3-on-surface-variant uppercase ml-1 tracking-wider">Número da Nota Fiscal</label>
+                                  <input 
+                                    type="text"
+                                    value={newSale.invoice_number || ''}
+                                    onChange={(e) => setNewSale({ ...newSale, invoice_number: e.target.value })}
+                                    placeholder="Ex: 000.123.456"
+                                    className="w-full mt-1 px-4 py-2.5 bg-m3-surface-container-low border border-m3-outline-variant rounded-xl text-sm font-bold text-m3-on-surface placeholder:text-m3-on-surface-variant/30 focus:outline-none focus:ring-2 focus:ring-m3-primary/20 focus:border-m3-primary transition-all"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                            {/* Toggle Parcelada */}
+                            <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-m3-outline-variant">
+                              <div className="flex items-center gap-3">
+                                <span className="material-symbols-outlined text-m3-on-surface-variant">event_repeat</span>
+                                <div>
+                                  <p className="font-semibold text-m3-on-surface">Venda Parcelada?</p>
+                                  <p className="text-xs text-m3-on-surface-variant">Múltiplas parcelas</p>
+                                </div>
+                              </div>
+                              <label className="relative inline-flex items-center cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  className="sr-only peer" 
+                                  checked={!!newSale.is_installment}
+                                  onChange={() => setNewSale({ ...newSale, is_installment: !newSale.is_installment, installments: !newSale.is_installment ? newSale.installments : [] })}
+                                />
+                                <div className="w-11 h-6 bg-m3-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-m3-primary"></div>
+                              </label>
+                            </div>
+                          </div>
+
+                          {/* Installment Config Inline */}
+                          {newSale.is_installment && (
+                            <div className="mt-4 p-4 bg-m3-surface-container rounded-xl border border-m3-outline-variant space-y-3 animate-in fade-in duration-300">
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-m3-on-surface-variant uppercase ml-1">Qtd Parcelas</label>
+                                  <input
+                                    type="number"
+                                    value={installmentConfig.count}
+                                    onChange={e => setInstallmentConfig({ ...installmentConfig, count: Number(e.target.value) })}
+                                    className="w-full px-4 py-2 bg-white border border-m3-outline-variant rounded-lg text-sm font-semibold"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-m3-on-surface-variant uppercase ml-1">1ª Parcela</label>
+                                  <input
+                                    type="date"
+                                    value={installmentConfig.firstDate}
+                                    onChange={e => setInstallmentConfig({ ...installmentConfig, firstDate: e.target.value })}
+                                    className="w-full px-4 py-2 bg-white border border-m3-outline-variant rounded-lg text-sm"
+                                  />
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={generateInstallments}
+                                className="w-full py-2 bg-m3-primary-container text-m3-on-primary-container font-bold rounded-lg hover:brightness-110 transition-all text-xs uppercase"
+                              >
+                                Gerar Fluxo de Parcelas
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+
+                  {/* Right Column: Rateio de Comissão */}
+                  <div className="lg:col-span-5">
+                    <section className="bg-m3-surface-container-low p-6 rounded-2xl border border-m3-outline-variant shadow-sm h-full flex flex-col">
+                      <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-2 text-m3-primary">
+                          <span className="material-symbols-outlined">account_balance_wallet</span>
+                          <h3 className="font-bold text-lg">Rateio de Comissão</h3>
+                        </div>
+                        {(() => {
+                          const splitTotal = newSale.splits?.reduce((a, b) => a + b.percentage, 0) || 0;
+                          return (
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${splitTotal === 100 ? 'bg-m3-primary-container text-m3-on-primary-container' : 'bg-m3-tertiary-fixed text-m3-on-tertiary-fixed-variant'}`}>
+                              Soma do Rateio: {splitTotal}%
+                            </span>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="space-y-3 mb-6 flex-1 overflow-y-auto pr-1">
+                        {/* Summary Box */}
+                        {(() => {
+                           const vgv = Number(newSale.vgv) || 0;
+                           const commPerc = Number(newSale.commission_percentage) || 0;
+                           const totalComm = (vgv * commPerc) / 100;
+                           return (
+                             <div className="p-4 bg-m3-primary text-white rounded-xl mb-4">
+                               <p className="text-[10px] font-bold uppercase tracking-widest opacity-80">Comissão Total Bruta</p>
+                               <p className="text-xl font-black mt-1">{formatCurrency(totalComm)}</p>
+                             </div>
+                           );
+                        })()}
+
+                        {/* Split Items */}
+                        {(newSale.splits || []).map((split, idx) => (
+                          <div key={idx} className="p-4 bg-white rounded-xl border border-m3-outline-variant flex items-center justify-between animate-in slide-in-from-right-4 duration-300">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${split.broker_id === null ? 'bg-m3-primary/10' : 'bg-slate-100'}`}>
+                                <span className={`material-symbols-outlined ${split.broker_id === null ? 'text-m3-primary' : 'text-slate-500'}`} style={{ fontVariationSettings: '"FILL" 1' }}>
+                                  {split.broker_id === null ? 'corporate_fare' : 'person'}
+                                </span>
+                              </div>
+                              <div>
+                                <p className="font-bold text-m3-on-surface text-sm">{split.broker_name}</p>
+                                <p className="text-xs text-m3-on-surface-variant font-medium">{split.percentage}% — {formatCurrency(split.calculated_value)}</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setNewSale({ ...newSale, splits: newSale.splits?.filter((_, i) => i !== idx) })}
+                              className="text-m3-outline hover:text-red-600 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-lg">delete</span>
+                            </button>
+                          </div>
+                        ))}
+
+                        {/* Add Participant Input */}
+                        <div className="p-4 bg-white rounded-xl border-2 border-dashed border-m3-outline-variant flex flex-col items-center justify-center gap-3 mt-4">
+                          <p className="text-sm font-bold text-m3-on-surface-variant">Adicionar Participante</p>
+                          <div className="w-full flex gap-2">
+                            <select 
+                              className="flex-1 bg-m3-surface-container-low border border-m3-outline-variant rounded-lg text-xs font-bold py-2 px-3 outline-none"
+                              value={currentSplit.brokerId}
+                              onChange={e => setCurrentSplit({ ...currentSplit, brokerId: e.target.value })}
+                            >
+                              <option value="">Seletor de Beneficiário...</option>
+                              <option value="AGENCY">🏢 Agência (Imobiliária)</option>
+                              {team.map(u => (
+                                <option key={u.id} value={u.id}>{u.name}</option>
+                              ))}
+                            </select>
+                            <div className="relative w-16">
+                              <input 
+                                type="number" 
+                                className="w-full bg-m3-surface-container-low border border-m3-outline-variant rounded-lg text-xs font-black py-2 px-2 text-center" 
+                                placeholder="%" 
+                                value={currentSplit.percentage}
+                                onChange={e => setCurrentSplit({ ...currentSplit, percentage: Number(e.target.value) })}
+                              />
+                            </div>
+                          </div>
+                          <button 
+                            type="button"
+                            onClick={handleAddSplit}
+                            className="w-full py-2.5 text-m3-primary text-xs font-black border border-m3-primary/20 rounded-lg hover:bg-m3-primary/5 transition-colors uppercase tracking-widest"
+                          >
+                            + Adicionar ao Rateio
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mt-auto space-y-3 shrink-0">
+                        {((newSale.splits?.reduce((a, b) => a + b.percentage, 0) || 0) < 100) && (
+                          <button 
+                            type="button"
+                            onClick={handleSmartSplit}
+                            className="w-full py-3 bg-white border border-m3-primary text-m3-primary rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-m3-primary/5 transition-all text-xs uppercase tracking-widest"
+                          >
+                            <span className="material-symbols-outlined text-sm">auto_fix_high</span>
+                            Completar com Agência ({100 - (newSale.splits?.reduce((a, b) => a + b.percentage, 0) || 0)}%)
+                          </button>
+                        )}
+                        <div className="p-4 bg-m3-tertiary-fixed rounded-xl border border-m3-outline-variant/30 flex gap-3">
+                          <span className="material-symbols-outlined text-m3-on-tertiary-fixed-variant">lightbulb</span>
+                          <p className="text-xs text-m3-on-tertiary-fixed-variant leading-relaxed">
+                            <b>Dica:</b> O rateio total deve somar exatamente 100% da comissão disponível para que a venda possa ser salva.
+                          </p>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+
+                {/* Bottom Actions */}
+                <div className="mt-12 flex items-center justify-end gap-4 border-t border-m3-outline-variant pt-8">
+                  <button 
+                    type="button"
+                    onClick={() => { closeModal(); clearDraft(DRAFT_KEY); }}
+                    className="px-8 py-3 text-m3-on-surface-variant font-bold hover:bg-m3-surface-container-highest transition-colors rounded-xl text-sm"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={handleSaveSale}
+                    disabled={(newSale.splits?.reduce((a, b) => a + b.percentage, 0) || 0) !== 100}
+                    className={`px-10 py-3 rounded-xl font-extrabold shadow-lg transition-all flex items-center gap-2 text-sm uppercase tracking-wider ${
+                      (newSale.splits?.reduce((a, b) => a + b.percentage, 0) || 0) === 100
+                      ? 'bg-m3-primary text-white shadow-m3-primary/20 hover:scale-[1.02] active:scale-[0.98]'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-base">save</span>
+                    {editingSale ? 'Salvar Alterações' : 'Salvar Venda'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Auditoria (Timeline) */}
+      {isAuditModalOpen && selectedSaleForAudit && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white border border-slate-200 w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in duration-300">
+            <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                  <Clock size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">Histórico de Alterações</h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{selectedSaleForAudit.property_address}</p>
+                </div>
+              </div>
+              <button onClick={() => setIsAuditModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
                 <X size={24} />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-10">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                {/* COLUNA ESQUERDA */}
-                <div className="space-y-8">
-                  {/* Informações Básicas */}
-                  <div className="space-y-4">
-                    <h4 className="text-xs font-black uppercase text-blue-600 tracking-widest">Informações Básicas</h4>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Imóvel (Endereço / Unidade)</label>
-                      <input
-                        type="text"
-                        value={newSale.property_address || ''}
-                        placeholder="Ex: Av. Paulista, 1000 - Apto 42"
-                        className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-100 outline-none text-sm font-semibold"
-                        onChange={e => setNewSale({ ...newSale, property_address: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 flex items-center gap-1.5">
-                          <DollarSign size={12} className="text-blue-500" /> VGV (Valor de Venda)
-                        </label>
-                        <div className="relative group">
-                          <span className="absolute left-5 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400 group-focus-within:text-blue-500 transition-colors">R$</span>
-                          <input
-                            type="text"
-                            value={new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2 }).format(newSale.vgv || 0)}
-                            placeholder="0,00"
-                            className="w-full pl-12 pr-5 py-4 bg-slate-50 border-2 border-transparent rounded-[20px] focus:ring-8 focus:ring-blue-50 focus:border-blue-200 outline-none text-sm font-black text-slate-700 transition-all"
-                            onChange={e => {
-                              const val = e.target.value.replace(/\D/g, '');
-                              const num = Number(val) / 100;
-                              setNewSale({ ...newSale, vgv: num });
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1 flex items-center gap-1.5">
-                          <TrendingUp size={12} className="text-emerald-500" /> % Comissão
-                        </label>
-                        <div className="relative group">
-                          <input
-                            type="number"
-                            value={newSale.commission_percentage || 6}
-                            className="w-full px-5 py-4 bg-slate-50 border-2 border-transparent rounded-[20px] focus:ring-8 focus:ring-emerald-50 focus:border-emerald-200 outline-none text-sm font-black text-slate-700 transition-all pr-10"
-                            onChange={e => setNewSale({ ...newSale, commission_percentage: Number(e.target.value) })}
-                          />
-                          <span className="absolute right-5 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400 group-focus-within:text-emerald-500 transition-colors">%</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Data da Venda</label>
-                      <input
-                        type="date"
-                        value={newSale.sale_date}
-                        className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-100 outline-none text-sm font-semibold text-slate-600"
-                        onChange={e => setNewSale({ ...newSale, sale_date: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Participantes */}
-                  <div className="space-y-4">
-                    <h4 className="text-xs font-black uppercase text-blue-600 tracking-widest">Participantes</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <input type="text" value={newSale.buyer_name || ''} placeholder="Nome do Comprador" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl text-sm" onChange={e => setNewSale({ ...newSale, buyer_name: e.target.value })} />
-                      <input type="text" value={newSale.buyer_cpf || ''} placeholder="CPF do Comprador" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl text-sm" maxLength={18} onChange={e => setNewSale({ ...newSale, buyer_cpf: formatCpfCnpjInput(e.target.value) })} />
-                      <input type="text" value={newSale.seller_name || ''} placeholder="Nome do Vendedor" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl text-sm" onChange={e => setNewSale({ ...newSale, seller_name: e.target.value })} />
-                      <input type="text" value={newSale.seller_cpf || ''} placeholder="CPF do Vendedor" className="w-full px-5 py-3 bg-slate-50 border-none rounded-2xl text-sm" maxLength={18} onChange={e => setNewSale({ ...newSale, seller_cpf: formatCpfCnpjInput(e.target.value) })} />
-                    </div>
-                  </div>
-
-                  {/* Nota Fiscal */}
-                  <div className="flex flex-col gap-4 p-5 bg-blue-50/30 rounded-[32px] border border-blue-50">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-12 h-7 rounded-full relative transition-colors cursor-pointer ${newSale.invoice_issued ? 'bg-blue-600' : 'bg-slate-200'}`} onClick={() => setNewSale({ ...newSale, invoice_issued: !newSale.invoice_issued })}>
-                        <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all shadow-sm ${newSale.invoice_issued ? 'left-6' : 'left-1'}`} />
-                      </div>
-                      <span className="text-sm font-bold text-slate-600">NF já emitida?</span>
-                    </div>
-
-                    {newSale.invoice_issued && (
-                      <div className="animate-in fade-in slide-in-from-top-2 duration-300 w-full">
-                        <input
-                          type="text"
-                          value={newSale.invoice_number || ''}
-                          placeholder="Digite o número da Nota Fiscal..."
-                          className="w-full px-5 py-3 bg-white border border-blue-100 rounded-2xl outline-none focus:ring-2 focus:ring-blue-200 text-sm font-semibold shadow-sm"
-                          onChange={e => setNewSale({ ...newSale, invoice_number: e.target.value })}
-                        />
-                      </div>
-                    )}
-                  </div>
+            <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30">
+              {loadingAudit ? (
+                <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                  <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4" />
+                  <p className="text-xs font-bold uppercase tracking-widest">Carregando histórico...</p>
                 </div>
+              ) : auditLogs.length > 0 ? (
+                <div className="relative">
+                  <div className="absolute left-[23px] top-4 bottom-4 w-0.5 bg-slate-100" />
+                  <div className="space-y-8">
+                    {auditLogs.map((log, idx) => {
+                      const changedFields = log.old_data && log.new_data ? Object.keys(log.new_data).filter(key => 
+                        JSON.stringify(log.old_data[key]) !== JSON.stringify(log.new_data[key]) && 
+                        !['updated_at', 'id'].includes(key)
+                      ) : [];
 
-                {/* COLUNA DIREITA */}
-                <div className="space-y-8">
-                  {/* Pagamento / Parcelamento */}
-                  <div className="p-5 bg-slate-50 rounded-[32px] border border-slate-100 space-y-4">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div
-                        className={`w-12 h-7 rounded-full relative transition-colors cursor-pointer ${newSale.is_installment ? 'bg-blue-600' : 'bg-slate-200'}`}
-                        onClick={() => {
-                          const newVal = !newSale.is_installment;
-                          setNewSale({
-                            ...newSale,
-                            is_installment: newVal,
-                            installments: newVal ? newSale.installments : [] // Limpar se desativado
-                          });
-                        }}
-                      >
-                        <div className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all shadow-sm ${newSale.is_installment ? 'left-6' : 'left-1'}`} />
-                      </div>
-                      <span className="text-sm font-bold text-slate-600">Venda Parcelada?</span>
-                    </div>
-
-                    {newSale.is_installment && (
-                      <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-4">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Qtd Parcelas</label>
-                            <input
-                              type="number"
-                              value={installmentConfig.count}
-                              onChange={e => setInstallmentConfig({ ...installmentConfig, count: Number(e.target.value) })}
-                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm"
-                            />
+                      return (
+                        <div key={log.id} className="relative pl-14 animate-in slide-in-from-left-4 duration-500" style={{ animationDelay: `${idx * 100}ms` }}>
+                          <div className={`absolute left-0 w-12 h-12 rounded-2xl border-4 border-white shadow-sm flex items-center justify-center z-10
+                            ${log.action_type === 'CREATE' ? 'bg-emerald-500 text-white' : 
+                              log.action_type === 'DELETE' ? 'bg-rose-500 text-white' : 'bg-blue-600 text-white'}`}>
+                            {log.action_type === 'CREATE' ? <Plus size={20} /> : log.action_type === 'STATUS_CHANGE' ? <RefreshCw size={20} /> : <Edit2 size={20} />}
                           </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Data 1ª Parcela</label>
-                            <input
-                              type="date"
-                              value={installmentConfig.firstDate}
-                              onChange={e => setInstallmentConfig({ ...installmentConfig, firstDate: e.target.value })}
-                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm"
-                            />
-                          </div>
-                        </div>
-                        <button
-                          onClick={generateInstallments}
-                          className="w-full bg-blue-100 text-blue-700 font-bold py-3 rounded-xl hover:bg-blue-200 transition-colors text-sm"
-                        >
-                          Gerar Parcelas
-                        </button>
-
-                        {newSale.installments && newSale.installments.length > 0 && (
-                          <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
-                            {newSale.installments.map((inst, idx) => (
-                              <div key={idx} className="flex justify-between items-center text-xs bg-white p-2 rounded-lg border border-slate-100">
-                                <span className="font-bold text-slate-600">{inst.installment_number}ª Parcela</span>
-                                <span className="text-slate-500">{inst.due_date.split('-').reverse().join('/')}</span>
-                                <div className="text-right">
-                                  <span className="block font-bold text-slate-800">{formatCurrency(inst.value)} <span className="text-[9px] text-slate-400 font-normal">VGV</span></span>
-                                  <span className="block font-bold text-blue-600">{formatCurrency(((newSale.commission_percentage || 0) / 100 * (inst.value || 0)))} <span className="text-[9px] text-blue-300 font-normal">COM</span></span>
-                                </div>
+                          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-3">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="text-sm font-black text-slate-800 uppercase tracking-tight">
+                                  {log.action_type === 'CREATE' ? 'Venda Criada' : 'Venda Atualizada'}
+                                </p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
+                                  {new Date(log.created_at).toLocaleString('pt-BR')}
+                                </p>
                               </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                              <div className="px-3 py-1 bg-slate-50 rounded-lg text-[9px] font-black text-slate-500 uppercase">
+                                ID: {log.id.split('-')[0]}
+                              </div>
+                            </div>
 
-                  {/* Rateio de Comissão */}
-                  <div className="bg-slate-50/50 p-8 rounded-[32px] border border-slate-100 space-y-6">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Split className="text-blue-500" size={20} />
-                      <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest">Rateio de Comissão</h4>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <select
-                        className="flex-1 px-4 py-3 bg-white border border-slate-100 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100"
-                        value={currentSplit.brokerId}
-                        onChange={e => setCurrentSplit({ ...currentSplit, brokerId: e.target.value })}
-                      >
-                        <option value="">Selecionar Beneficiário</option>
-                        <option value="AGENCY" className="font-bold text-blue-600">Agência (Imobiliária)</option>
-                        <hr />
-                        {team.map(u => (
-                          <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        className="w-24 px-4 py-3 bg-white border border-slate-100 rounded-xl text-xs font-bold text-center outline-none focus:ring-2 focus:ring-blue-100"
-                        value={currentSplit.percentage}
-                        onChange={e => setCurrentSplit({ ...currentSplit, percentage: Number(e.target.value) })}
-                        placeholder="%"
-                      />
-                      <button
-                        onClick={handleAddSplit}
-                        className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-100"
-                      >
-                        <Plus size={20} />
-                      </button>
-                    </div>
-
-                    <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2">
-                      {(newSale.splits || []).map((split, idx) => (
-                        <div key={idx} className="bg-white p-4 rounded-2xl flex items-center justify-between border border-slate-100 animate-in slide-in-from-bottom-2 duration-300">
-                          <div className="flex items-center gap-3">
-                            {split.broker_id === 'AGENCY' ? (
-                              <Building2 className="text-blue-500" size={16} />
-                            ) : (
-                              <UserIcon className="text-slate-400" size={16} />
+                            {changedFields.length > 0 && (
+                              <div className="space-y-2 pt-2 border-t border-slate-50">
+                                {changedFields.map(field => (
+                                  <div key={field} className="flex flex-col gap-1">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase">{field}</span>
+                                    <div className="flex items-center gap-2 text-[11px]">
+                                      <span className="text-slate-400 line-through bg-slate-50 px-2 py-0.5 rounded italic">
+                                        {typeof log.old_data[field] === 'object' ? 'AlteraÃƒÂ§ÃƒÂ£o complexa' : String(log.old_data[field])}
+                                      </span>
+                                      <ArrowRight size={10} className="text-slate-300" />
+                                      <span className="text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded">
+                                        {typeof log.new_data[field] === 'object' ? 'AlteraÃƒÂ§ÃƒÂ£o complexa' : String(log.new_data[field])}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             )}
-                            <div>
-                              <p className="text-xs font-black text-slate-800">{split.broker_name}</p>
-                              <p className="text-[10px] text-blue-600 font-bold uppercase">{split.percentage}% — {formatCurrency(split.calculated_value)}</p>
+
+                            <div className="flex items-center gap-2 pt-2">
+                               <div className="w-5 h-5 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-400">
+                                  <UserIcon size={12} />
+                               </div>
+                               <span className="text-[10px] text-slate-500 font-bold uppercase">
+                                  Alterado por {team.find(u => u.id === log.user_id)?.name || 'Sistema'}
+                               </span>
                             </div>
                           </div>
-                          <button
-                            onClick={() => setNewSale({ ...newSale, splits: newSale.splits?.filter((_, i) => i !== idx) })}
-                            className="text-slate-300 hover:text-red-500 transition-colors"
-                          >
-                            <Trash2 size={16} />
-                          </button>
                         </div>
-                      ))}
-                    </div>
-
-                    <div className="pt-6 border-t border-slate-100 space-y-2">
-                      <div className="flex justify-between text-[10px] font-black uppercase text-slate-400">
-                        <span>Soma do Rateio</span>
-                        <span className={(newSale.splits?.reduce((a, b) => a + b.percentage, 0) || 0) === 100 ? 'text-emerald-500' : 'text-amber-500'}>
-                          {(newSale.splits?.reduce((a, b) => a + b.percentage, 0) || 0)}%
-                        </span>
-                      </div>
-                    </div>
+                      );
+                    })}
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-slate-300">
+                  <Info size={48} className="mb-4 opacity-20" />
+                  <p className="text-sm font-bold uppercase tracking-widest text-center">Nenhum histórico encontrado<br/><span className="text-[10px] font-normal lowercase tracking-normal text-slate-400">As alterações comeÃƒÂ§am a ser rastreadas agora</span></p>
+                </div>
+              )}
             </div>
 
-            <div className="p-8 border-t border-black/5 bg-transparent flex justify-end gap-4 sticky bottom-0 z-10">
-              <button
-                onClick={() => {
-                  closeModal();
-                  setNewSale(defaultNewSale);
-                  setInstallmentConfig(defaultInstallmentConfig);
-                  clearDraft(DRAFT_KEY);
-                }}
-                className="px-8 py-3 text-slate-400 font-bold hover:text-slate-600 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSaveSale}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-12 py-3 rounded-2xl font-black transition-all shadow-xl shadow-blue-200"
-              >
-                {editingSale ? 'Salvar Alterações' : 'Salvar Venda'}
-              </button>
+            <div className="p-8 border-t border-slate-100 bg-slate-50 flex justify-end">
+               <button 
+                onClick={() => setIsAuditModalOpen(false)}
+                className="px-10 py-3 bg-white border border-slate-200 rounded-2xl text-slate-800 font-black text-xs uppercase tracking-widest hover:bg-slate-100 transition-all shadow-sm"
+               >
+                 Fechar Histórico
+               </button>
             </div>
           </div>
         </div>

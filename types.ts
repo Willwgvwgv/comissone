@@ -78,7 +78,12 @@ export interface Sale {
   is_installment?: boolean;
   installments?: SaleInstallment[];
   splits: BrokerSplit[];
+  // Client contact — new field (nullable for backward compat)
+  client_contact_id?: string | null;
+  seller_contact_id?: string | null;
+  client_contact_name?: string | null; // Joined field, not stored in DB
 }
+
 
 export interface DashboardStats {
   totalVGV: number;
@@ -92,6 +97,19 @@ export interface DashboardStats {
 // Financial Module Types
 export type TransactionType = 'INCOME' | 'EXPENSE';
 export type TransactionStatus = 'PENDING' | 'PAID' | 'PARTIAL';
+export type FinancialContactType = 'CLIENT' | 'SUPPLIER' | 'BOTH';
+
+export interface FinancialContact {
+  id: string;
+  agency_id: string;
+  name: string;
+  document?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  type: FinancialContactType;
+  is_active: boolean;
+  created_at: string;
+}
 
 export interface FinancialCategory {
   id: string;
@@ -131,6 +149,10 @@ export interface BankImportLog {
   entries_sum: number;
   exits_sum: number;
   file_hash: string;
+  reconciled_count?: number;
+  reconciled_sum?: number;
+  created_count?: number;
+  created_sum?: number;
 }
 
 export interface ImportTransaction {
@@ -168,4 +190,6 @@ export interface FinancialTransaction {
   total_installments?: number;
   import_id?: string;    // Reference to bank_import_logs
   bank_txn_id?: string;  // Unique ID from the bank (FITID) or hash
+  contact_id?: string | null;
+  contact_name?: string; // Joined field
 }

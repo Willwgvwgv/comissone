@@ -7,12 +7,12 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import Sales from './components/Sales';
 import Commissions from './components/Commissions';
-import Financial from './components/Financial';
+import Financial, { FinancialTab } from './components/Financial';
 import Team from './components/Team';
 import Reports from './components/Reports';
 import BrokerPortal from './components/broker/BrokerPortal';
+import ProfileSettings from './components/ProfileSettings';
 import Register from './components/Register';
-
 import { UserRole, CommissionStatus } from './types';
 import { supabase } from './src/lib/supabaseClient';
 import { updateCommissionStatus, updateForecastDate } from './src/lib/supabaseHooks';
@@ -29,6 +29,19 @@ const AppContent: React.FC = () => {
   const fetchInitialData = async () => {
     await Promise.all([refetchSales(), refetchTeam()]);
   };
+
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('comissone_theme') || 'light';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('comissone_theme', theme);
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
 
   const [activeView, setActiveView] = useState(() => {
     return localStorage.getItem('comissone_active_view') || 'dashboard';
@@ -135,63 +148,18 @@ const AppContent: React.FC = () => {
     );
   }
 
-  const financialTabMap: Record<string, 'transactions' | 'overview' | 'accounts' | 'categories' | 'reconciliation' | 'cards'> = {
+  const financialTabMap: Record<string, FinancialTab> = {
     'financial-transactions': 'transactions',
     'financial-overview': 'overview',
     'financial-cards': 'cards',
     'financial-accounts': 'accounts',
+    'financial-contacts': 'contacts',
     'financial-categories': 'categories',
     'financial-reconciliation': 'reconciliation',
   };
 
-  const renderContent = () => {
-    switch (activeView) {
-      case 'dashboard':
-        return <Dashboard sales={sales} currentUser={currentUser} />;
-      case 'financial':
-      case 'financial-transactions':
-      case 'financial-overview':
-      case 'financial-cards':
-      case 'financial-accounts':
-      case 'financial-categories':
-      case 'financial-reconciliation': {
-        const tab = financialTabMap[activeView] || 'transactions';
-        return <Financial currentUser={currentUser} initialTab={tab} />;
-      }
-      case 'sales':
-        return <Sales sales={sales} setSales={() => {}} currentUser={currentUser} team={team} onRefetch={fetchInitialData} />;
-      case 'commissions':
-        return (
-          <Commissions
-            sales={sales}
-            currentUser={currentUser}
-            onUpdateStatus={handleUpdateCommissionStatus}
-            onUpdateForecast={handleUpdateForecast}
-          />
-        );
-      case 'reports':
-        return <Reports sales={sales} team={team} currentUser={currentUser} />;
-      case 'team':
-        return (
-          <Team
-            team={team}
-            currentUser={currentUser}
-            onRefetch={fetchInitialData}
-            onRemoveUser={async (userId) => {
-              try {
-                await supabase.from('users').delete().eq('id', userId);
-                await fetchInitialData();
-              } catch (error) {
-                console.error('Erro ao remover usuário:', error);
-                alert('Erro ao remover usuário. Tente novamente.');
-              }
-            }}
-          />
-        );
-      default:
-        return <Dashboard sales={sales} currentUser={currentUser} />;
-    }
-  };
+  const isFinancial = activeView === 'financial' || activeView.startsWith('financial-');
+  const financialTab = isFinancial ? (financialTabMap[activeView] || 'transactions') : 'transactions';
 
   return (
     <Layout
@@ -201,8 +169,58 @@ const AppContent: React.FC = () => {
       notifications={requestedNotifications}
       onClearNotifications={handleClearNotifications}
       onLogout={logout}
+      theme={theme}
+      setTheme={setTheme}
     >
-      {renderContent()}
+      <div className={activeView === 'dashboard' ? 'block' : 'hidden'}>
+        <Dashboard sales={sales} currentUser={currentUser} />
+      </div>
+
+      <div className={isFinancial ? 'block' : 'hidden'}>
+        <Financial currentUser={currentUser} initialTab={financialTab} />
+      </div>
+
+      <div className={activeView === 'sales' ? 'block' : 'hidden'}>
+        <Sales sales={sales} setSales={() => { }} currentUser={currentUser} team={team} onRefetch={fetchInitialData} />
+      </div>
+
+      <div className={activeView === 'commissions' ? 'block' : 'hidden'}>
+        <Commissions
+          sales={sales}
+          currentUser={currentUser}
+          onUpdateStatus={handleUpdateCommissionStatus}
+          onUpdateForecast={handleUpdateForecast}
+        />
+      </div>
+
+      <div className={activeView === 'reports' ? 'block' : 'hidden'}>
+        <Reports sales={sales} team={team} currentUser={currentUser} />
+      </div>
+
+      <div className={activeView === 'team' ? 'block' : 'hidden'}>
+        <Team
+          team={team}
+          currentUser={currentUser}
+          onRefetch={fetchInitialData}
+          onRemoveUser={async (userId) => {
+            try {
+              await supabase.from('users').delete().eq('id', userId);
+              await fetchInitialData();
+            } catch (error) {
+              console.error('Erro ao remover usuário:', error);
+              alert('Erro ao remover usuário. Tente novamente.');
+            }
+          }}
+        />
+      </div>
+      <div className={(activeView === 'profile' || activeView === 'settings') ? 'block' : 'hidden'}>
+        <ProfileSettings 
+          currentUser={currentUser} 
+          activeView={activeView as 'profile' | 'settings'}
+          theme={theme}
+          setTheme={setTheme}
+        />
+      </div>
     </Layout>
   );
 };

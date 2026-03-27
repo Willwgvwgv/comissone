@@ -15,13 +15,12 @@ interface FinancialSidebarProps {
 }
 
 const FinancialSidebar: React.FC<FinancialSidebarProps> = ({ activeTab, setActiveTab, importedCount }) => {
-    const menuItems = [
+    const menuItems: { id: string, label: string, icon: any, count?: number }[] = [
         { id: 'overview', label: 'Fluxo de Caixa', icon: LayoutDashboard },
         { id: 'transactions', label: 'Extrato', icon: List },
         { id: 'cards', label: 'Cartões', icon: CreditCard },
         { id: 'accounts', label: 'Contas', icon: Wallet },
         { id: 'categories', label: 'Categorias', icon: Tags },
-        { id: 'reconciliation', label: 'Conciliação', icon: ArrowRightLeft, count: importedCount },
     ];
 
     return (

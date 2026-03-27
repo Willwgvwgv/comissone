@@ -234,7 +234,7 @@ const Reports: React.FC<ReportsProps> = ({ sales, team, currentUser }) => {
         <div className="flex items-center gap-3">
           <button
             onClick={handleExportPDF}
-            className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all shadow-sm no-print"
+            className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all shadow-sm no-print cursor-pointer"
           >
             <FileDown size={18} /> Exportar PDF
           </button>
@@ -376,7 +376,7 @@ const Reports: React.FC<ReportsProps> = ({ sales, team, currentUser }) => {
             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">Comparando desempenho mensal: {new Date().getFullYear()} vs {new Date().getFullYear() - 1}</p>
           </div>
         </div>
-        <div className="h-[400px]">
+        <div className="h-[400px] min-h-[400px] relative">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={yoyData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />

@@ -122,7 +122,7 @@ export const parseOFX = (content: string): ImportTransaction[] => {
         const hash = btoa(unescape(encodeURIComponent(`${formattedDate}${memo}${amount}${trnType}`))).slice(0, 32);
 
         transactions.push({
-            id: fitId || hash,
+            id: crypto.randomUUID(),
             date: formattedDate,
             description: memo,
             amount: Math.abs(amount),
@@ -137,58 +137,80 @@ export const parseOFX = (content: string): ImportTransaction[] => {
 };
 
 export const parseCSV = (content: string): ImportTransaction[] => {
-    const firstLine = content.split('\n')[0] || '';
-    const separator = firstLine.includes(';') ? ';' : ',';
-    const lines = content.split('\n');
-    const transactions: ImportTransaction[] = [];
+    try {
+        const lines = content.split('\n').map(l => l.trim()).filter(Boolean);
+        if (lines.length < 2) return [];
 
-    for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
+        const firstLine = lines[0];
+        const separator = firstLine.includes(';') ? ';' : ',';
+        const transactions: ImportTransaction[] = [];
 
-        const parts = line.split(separator);
-        if (parts.length < 3) continue;
+        for (let i = 1; i < lines.length; i++) {
+            const parts = lines[i].split(separator);
+            if (parts.length < 2) continue;
 
-        const datePart = parts[0]?.trim();
-        const description = (parts[1] || parts[2] || '').trim();
+            const datePart = parts[0]?.trim();
+            const description = (parts[1] || parts[2] || '').trim().replace(/"/g, '');
 
-        let valuePart = '';
-        for (let j = parts.length - 1; j >= 2; j--) {
-            const v = parts[j]?.trim().replace(/"/g, '');
-            if (v && /^-?[\d.,]+$/.test(v.replace(/\s/g, ''))) {
-                valuePart = v;
-                break;
+            // Robust amount finding (look for last numeric part)
+            let rawAmount = '';
+            for (let j = parts.length - 1; j >= 1; j--) {
+                const p = parts[j]?.trim().replace(/"/g, '').replace(/\s/g, '');
+                if (p && /^-?[\d.,]+$/.test(p)) {
+                    rawAmount = p;
+                    break;
+                }
             }
+
+            if (!datePart || !rawAmount) continue;
+
+            // Normalize amount
+            let cleanAmount = rawAmount;
+            if (cleanAmount.includes(',') && cleanAmount.includes('.')) {
+                if (cleanAmount.lastIndexOf(',') > cleanAmount.lastIndexOf('.')) {
+                    cleanAmount = cleanAmount.replace(/\./g, '').replace(',', '.');
+                } else {
+                    cleanAmount = cleanAmount.replace(/,/g, '');
+                }
+            } else if (cleanAmount.includes(',')) {
+                cleanAmount = cleanAmount.replace(',', '.');
+            }
+            
+            const amount = parseFloat(cleanAmount);
+            if (isNaN(amount)) continue;
+
+            // Robust date parsing
+            let formattedDate = '';
+            const dmyMatch = datePart.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
+            const ymdMatch = datePart.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+
+            if (dmyMatch) {
+                let [_, d, m, y] = dmyMatch;
+                if (y.length === 2) y = `20${y}`;
+                formattedDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+            } else if (ymdMatch) {
+                let [_, y, m, d] = ymdMatch;
+                formattedDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+            }
+
+            if (!formattedDate) continue;
+
+            const hash = btoa(unescape(encodeURIComponent(`${formattedDate}${description}${amount}`))).slice(0, 32);
+
+            transactions.push({
+                id: crypto.randomUUID(),
+                date: formattedDate,
+                description: description || 'Sem descrição',
+                amount: Math.abs(amount),
+                type: amount >= 0 ? 'INCOME' : 'EXPENSE',
+                hash,
+            });
         }
-        if (!valuePart) valuePart = parts[parts.length - 1]?.trim() || '0';
-
-        const cleanValue = valuePart.replace(/\./g, '').replace(',', '.').replace(/"/g, '');
-        const amount = parseFloat(cleanValue);
-        if (!datePart || isNaN(amount)) continue;
-
-        let formattedDate = '';
-        if (/\d{2}\/\d{2}\/\d{4}/.test(datePart)) {
-            const [d, mon, y] = datePart.split('/');
-            formattedDate = `${y}-${mon}-${d}`;
-        } else if (/\d{4}-\d{2}-\d{2}/.test(datePart)) {
-            formattedDate = datePart;
-        } else {
-            continue;
-        }
-
-        const hash = btoa(unescape(encodeURIComponent(`${formattedDate}${description}${amount}`))).slice(0, 32);
-
-        transactions.push({
-            id: hash,
-            date: formattedDate,
-            description: description || 'Sem descrição',
-            amount: Math.abs(amount),
-            type: amount >= 0 ? 'INCOME' : 'EXPENSE',
-            hash,
-        });
+        return transactions;
+    } catch (err) {
+        console.error('Error parsing CSV:', err);
+        return [];
     }
-
-    return transactions;
 };
 
 /** Gera hash SHA-256 do conteúdo para evitar importações duplicadas */

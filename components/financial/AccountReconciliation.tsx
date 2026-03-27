@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
     Search,
     Plus,
@@ -42,10 +42,24 @@ const AccountReconciliation: React.FC<AccountReconciliationProps> = ({
     const [activeTab, setActiveTab] = useState<'PENDING' | 'CONCILIATED' | 'IGNORED'>('PENDING');
     const [ignoredIds, setIgnoredIds] = useState<Set<string>>(new Set());
     const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+    const expandedRowRef = useRef<HTMLTableRowElement>(null);
 
     // State for expanded rows/options and edits
     const [expandedRow, setExpandedRow] = useState<string | null>(null);
+
     const [actionType, setActionType] = useState<Record<string, 'MATCH' | 'NEW' | 'TRANSFER'>>({});
+
+    // Auto-scroll to expanded row only when creating a NEW transaction
+    useEffect(() => {
+        if (expandedRow && actionType[expandedRow] === 'NEW' && expandedRowRef.current) {
+            setTimeout(() => {
+                expandedRowRef.current?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+            }, 100);
+        }
+    }, [expandedRow, actionType]);
     const [edits, setEdits] = useState<Record<string, {
         description: string;
         date: string;
@@ -228,7 +242,10 @@ const AccountReconciliation: React.FC<AccountReconciliationProps> = ({
 
                             return (
                                 <React.Fragment key={imp.id}>
-                                    <tr className={`group transition-all ${isProcessing ? 'opacity-50' : ''} ${isExpanded ? 'bg-[#F9FBFF]' : 'hover:bg-[#F9FBFD]/30'}`}>
+                                    <tr 
+                                        ref={isExpanded ? expandedRowRef : null}
+                                        className={`group transition-all ${isProcessing ? 'opacity-50' : ''} ${isExpanded ? 'bg-[#F9FBFF]' : 'hover:bg-[#F9FBFD]/30'}`}
+                                    >
                                         <td className="px-6 py-7">
                                             <span className="text-[12px] font-semibold text-slate-600">
                                                 {formatDateShort(imp.date)}

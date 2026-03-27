@@ -2,7 +2,8 @@ import React, { useState, useRef } from 'react';
 import { ArrowLeft, Download, Upload, Plus, Search, Filter, MoreHorizontal, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 import { FinancialAccount, FinancialTransaction, FinancialCategory } from '../../types';
 import { ImportTransaction, parseOFX, parseCSV } from '../../src/lib/importUtils';
-import AccountReconciliation from './AccountReconciliation';
+import UnifiedReconciliation from './UnifiedReconciliation';
+import { User, FinancialContact } from '../../types';
 
 const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -10,135 +11,53 @@ const formatCurrency = (value: number) => {
         currency: 'BRL'
     }).format(value);
 };
-
 interface AccountDetailsProps {
     account: FinancialAccount;
     transactions: FinancialTransaction[];
     categories: FinancialCategory[];
     accounts: FinancialAccount[];
+    currentUser: User;
+    allTransactions: FinancialTransaction[];
+    importLogs: any[];
+    contacts: FinancialContact[];
     onBack: () => void;
     onAddTransaction: () => void;
     onImport: () => void;
     updateTransactionStatus: (id: string, status: 'PAID' | 'PENDING') => Promise<void>;
     addTransaction: (transaction: any) => Promise<any>;
+    addImportLog: any;
+    updateImportLog: any;
+    deleteImportLog: any;
 }
 
 const AccountDetails: React.FC<AccountDetailsProps> = ({
     account,
     transactions,
+    allTransactions,
     categories,
     accounts,
+    currentUser,
+    importLogs,
+    contacts,
     onBack,
     onAddTransaction,
     updateTransactionStatus,
-    addTransaction
+    addTransaction,
+    addImportLog,
+    updateImportLog,
+    deleteImportLog
 }) => {
     const [activeTab, setActiveTab] = useState<'extract' | 'reconciliation'>('extract');
     const [searchTerm, setSearchTerm] = useState('');
-    const [importedTransactions, setImportedTransactions] = useState<ImportTransaction[]>([]);
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    // Logic for old reconciliation removed as it's being replaced with UnifiedReconciliation
 
     const filteredTransactions = transactions.filter(t =>
         t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.category_name?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const content = event.target?.result as string;
-            if (file.name.toLowerCase().endsWith('.ofx')) {
-                const parsed = parseOFX(content);
-                setImportedTransactions(parsed);
-                setActiveTab('reconciliation');
-            } else if (file.name.toLowerCase().endsWith('.csv')) {
-                const parsed = parseCSV(content);
-                setImportedTransactions(parsed);
-                setActiveTab('reconciliation');
-            } else {
-                alert('Formato de arquivo não suportado. Use .OFX ou .CSV');
-            }
-        };
-        reader.readAsText(file);
-    };
-
-    const handleConfirmMatch = async (importId: string, systemId: string) => {
-        try {
-            await updateTransactionStatus(systemId, 'PAID');
-            setImportedTransactions(prev => prev.filter(t => t.id !== importId));
-        } catch (error) {
-            console.error('Erro ao conciliar:', error);
-            alert('Erro ao confirmar conciliação.');
-        }
-    };
-
-    const handleCreateNew = async (imp: ImportTransaction & { category_id: string }) => {
-        try {
-            await addTransaction({
-                description: imp.description,
-                amount: imp.amount,
-                type: imp.type,
-                due_date: imp.date,
-                status: 'PAID',
-                payment_date: imp.date,
-                account_id: account.id,
-                category_id: imp.category_id
-            });
-            setImportedTransactions(prev => prev.filter(t => t.id !== imp.id));
-        } catch (error) {
-            console.error('Erro ao criar transação:', error);
-            alert('Erro ao criar novo lançamento.');
-        }
-    };
-
-    const handleTransfer = async (importId: string, targetAccountId: string) => {
-        const imp = importedTransactions.find(t => t.id === importId);
-        if (!imp) return;
-
-        try {
-            // 1. Create transaction in current account (PAID)
-            await addTransaction({
-                description: `TRANSFERÊNCIA - ${imp.description}`,
-                amount: imp.amount,
-                type: imp.type,
-                due_date: imp.date,
-                status: 'PAID',
-                payment_date: imp.date,
-                account_id: account.id,
-                category_id: null
-            });
-
-            // 2. Create counterpart in target account (PAID)
-            await addTransaction({
-                description: `TRANSFERÊNCIA - ${imp.description}`,
-                amount: imp.amount,
-                type: imp.type === 'INCOME' ? 'EXPENSE' : 'INCOME',
-                due_date: imp.date,
-                status: 'PAID',
-                payment_date: imp.date,
-                account_id: targetAccountId,
-                category_id: null
-            });
-
-            setImportedTransactions(prev => prev.filter(t => t.id !== importId));
-        } catch (error) {
-            console.error('Erro na transferência:', error);
-            alert('Erro ao realizar transferência.');
-        }
-    };
-
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-            <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-                accept=".ofx,.csv"
-                className="hidden"
-            />
 
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -160,10 +79,10 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
 
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={() => fileInputRef.current?.click()}
+                        onClick={() => setActiveTab('reconciliation')}
                         className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors"
                     >
-                        <Upload size={18} /> Importar Extrato
+                        <Upload size={18} /> Conciliação Inteligente
                     </button>
                     <button
                         onClick={onAddTransaction}
@@ -213,12 +132,7 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
                         onClick={() => setActiveTab('reconciliation')}
                         className={`pb-4 text-sm font-bold transition-all relative ${activeTab === 'reconciliation' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
                     >
-                        Conciliação Bancária
-                        {importedTransactions.length > 0 && (
-                            <span className="ml-2 px-1.5 py-0.5 bg-amber-500 text-white text-[10px] rounded-full">
-                                {importedTransactions.length}
-                            </span>
-                        )}
+                        Conciliação Inteligente
                         {activeTab === 'reconciliation' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-full" />}
                     </button>
                 </div>
@@ -315,39 +229,20 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
                     </div>
                 </div>
             ) : (
-                <div className="space-y-6">
-                    {importedTransactions.length > 0 ? (
-                        <AccountReconciliation
-                            account={account}
-                            importedTransactions={importedTransactions}
-                            systemTransactions={transactions}
-                            categories={categories}
-                            accounts={accounts}
-                            onConfirmMatch={handleConfirmMatch}
-                            onCreateNew={handleCreateNew}
-                            onTransfer={handleTransfer}
-                            onIgnore={(id) => setImportedTransactions(prev => prev.filter(t => t.id !== id))}
-                        />
-                    ) : (
-                        <div className="bg-gray-50 rounded-2xl border border-dashed border-gray-300 p-12 text-center">
-                            <div className="flex flex-col items-center gap-3">
-                                <div className="p-4 bg-white rounded-full shadow-sm">
-                                    <Upload size={32} className="text-slate-400" />
-                                </div>
-                                <h3 className="text-lg font-bold text-slate-700">Conciliação Bancária</h3>
-                                <p className="text-slate-500 max-w-md mx-auto mb-4">
-                                    Importe seu extrato OFX ou CSV para conciliar automaticamente suas movimentações e manter o financeiro em dia.
-                                </p>
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="btn-primary px-8"
-                                >
-                                    Importar Extrato agora
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </div>
+                <UnifiedReconciliation
+                    currentUser={currentUser}
+                    accounts={accounts}
+                    systemTransactions={allTransactions}
+                    categories={categories}
+                    contacts={contacts}
+                    importLogs={importLogs}
+                    addTransaction={addTransaction}
+                    updateTransactionStatus={updateTransactionStatus}
+                    addImportLog={addImportLog}
+                    updateImportLog={updateImportLog}
+                    deleteImportLog={deleteImportLog}
+                    forcedAccountId={account.id}
+                />
             )}
         </div>
     );

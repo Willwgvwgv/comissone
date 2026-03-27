@@ -13,7 +13,7 @@ interface DeleteConfirmationModalProps {
 const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({ isOpen, onClose, onConfirm, transaction }) => {
     if (!isOpen || !transaction) return null;
 
-    const isRecurring = transaction.description.includes('(') && transaction.description.includes(')');
+    const isRecurring = (transaction.total_installments && transaction.total_installments > 1) || (transaction.description.includes('(') && transaction.description.includes(')'));
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4 animate-in fade-in duration-200">

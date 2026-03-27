@@ -89,12 +89,12 @@ export const NAV_ITEMS = [
     icon: <Landmark size={20} />,
     roles: [UserRole.ADMIN],
     subItems: [
-      { id: 'financial-transactions', label: 'Extrato', icon: <Filter size={18} />, parentId: 'financial' },
-      { id: 'financial-overview', label: 'Fluxo de Caixa', icon: <Landmark size={18} />, parentId: 'financial' },
-      { id: 'financial-cards', label: 'Cartões', icon: <CreditCard size={18} />, parentId: 'financial' },
-      { id: 'financial-accounts', label: 'Contas Bancárias', icon: <Wallet size={18} />, parentId: 'financial' },
-      { id: 'financial-reconciliation', label: 'Conciliação Bancária', icon: <RefreshCw size={18} />, parentId: 'financial' },
-      { id: 'financial-categories', label: 'Categorias', icon: <Tags size={18} />, parentId: 'financial' },
+      { id: 'financial-transactions', label: 'Extrato', icon: <Filter size={20} />, parentId: 'financial' },
+      { id: 'financial-overview', label: 'Fluxo de Caixa', icon: <Landmark size={20} />, parentId: 'financial' },
+      { id: 'financial-cards', label: 'Cartões', icon: <CreditCard size={20} />, parentId: 'financial' },
+      { id: 'financial-accounts', label: 'Contas Bancárias', icon: <Wallet size={20} />, parentId: 'financial' },
+      { id: 'financial-contacts', label: 'Clientes / Fornecedores', icon: <Users size={20} />, parentId: 'financial' },
+      { id: 'financial-categories', label: 'Categorias', icon: <Tags size={20} />, parentId: 'financial' },
     ]
   },
 ];

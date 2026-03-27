@@ -20,20 +20,24 @@ import AddCategoryModal from './modals/AddCategoryModal';
 import AccountDetails from './financial/AccountDetails';
 import AccountReconciliation from './financial/AccountReconciliation';
 import StatementImport from './financial/StatementImport';
+import UnifiedReconciliation from './financial/UnifiedReconciliation';
 import BankImport from '../src/pages/BankImport';
 import CreditCardManagement from './financial/CreditCardManagement';
 import AccountsView from './financial/AccountsView';
+import FinancialContacts from './financial/FinancialContacts';
 
 // --- MOCK DATA FOR UI DEVELOPMENT (Remove after backend integration) ---
 // const MOCK_TRANSACTIONS = ... (Removed in favor of using hook data)
 
+export type FinancialTab = 'overview' | 'transactions' | 'accounts' | 'categories' | 'cards' | 'contacts';
+
 interface FinancialProps {
     currentUser: User;
-    initialTab?: 'overview' | 'transactions' | 'accounts' | 'categories' | 'reconciliation' | 'cards' | 'importacao';
+    initialTab?: FinancialTab;
 }
 
 const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transactions' }) => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'accounts' | 'categories' | 'reconciliation' | 'cards' | 'importacao'>(initialTab);
+    const [activeTab, setActiveTab] = useState<FinancialTab>(initialTab);
 
     // Sync activeTab with initialTab when it changes
     useEffect(() => {
@@ -78,6 +82,7 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
 
     // Global Date Filter State
     const [currentDate, setCurrentDate] = useState(new Date());
+    const [chartPeriod, setChartPeriod] = useState<'Diário' | 'Semanal' | 'Mensal'>('Mensal');
 
     const handlePrevMonth = () => {
         setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
@@ -93,13 +98,15 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
 
     // Use real data hook
     const {
-        transactions, categories, accounts, loading,
+        transactions, categories, accounts, importLogs, loading,
         updateTransactionStatus, deleteTransaction, addTransaction,
         reopenTransaction,
         addAccount, updateAccount, deleteAccount,
         addCategory, updateCategory, deleteCategory,
+        contacts, addContact, updateContact, deleteContact,
         refresh,
-        confirmImport // Added confirmImport from useFinancial
+        addImportLog, updateImportLog, deleteImportLog,
+        confirmImport
     } = useFinancial(currentUser.agency_id);
 
     // --- POPULATE DEFAULT CATEGORIES ---
@@ -219,8 +226,58 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
     // --- CHART LOGIC (12 Months Window centered on current) ----------------
     // const chartData = ... (Refined to show window around selected date)
     const chartData = useMemo(() => {
+        if (chartPeriod === 'Diário') {
+            const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+            const days = [];
+            for (let i = 1; i <= daysInMonth; i++) {
+                days.push(new Date(currentYear, currentMonth, i));
+            }
+
+            return days.map(date => {
+                const dateStr = date.toISOString().split('T')[0];
+                const dayTrans = transactions.filter(t => t.due_date === dateStr);
+                const income = dayTrans.filter(t => t.type === 'INCOME').reduce((acc, t) => acc + Number(t.amount), 0);
+                const expense = dayTrans.filter(t => t.type === 'EXPENSE').reduce((acc, t) => acc + Number(t.amount), 0);
+
+                return {
+                    name: date.getDate().toString().padStart(2, '0'),
+                    Receitas: income,
+                    Despesas: expense,
+                    Saldo: income - expense,
+                    originalDate: date,
+                    isSelected: date.getDate() === new Date().getDate() && date.getMonth() === new Date().getMonth() && date.getFullYear() === new Date().getFullYear()
+                };
+            });
+        }
+
+        if (chartPeriod === 'Semanal') {
+            const weeks = [];
+            const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+            for (let i = 0; i < 4; i++) {
+                const start = i * 7 + 1;
+                const end = i === 3 ? lastDay : (i + 1) * 7;
+                weeks.push({ label: `Sem ${i + 1}`, start, end });
+            }
+
+            return weeks.map(w => {
+                const weekTrans = transactions.filter(t => {
+                    const [ty, tm, td] = t.due_date.split('-').map(Number);
+                    return ty === currentYear && (tm - 1) === currentMonth && td >= w.start && td <= w.end;
+                });
+                const income = weekTrans.filter(t => t.type === 'INCOME').reduce((acc, t) => acc + Number(t.amount), 0);
+                const expense = weekTrans.filter(t => t.type === 'EXPENSE').reduce((acc, t) => acc + Number(t.amount), 0);
+
+                return {
+                    name: w.label,
+                    Receitas: income,
+                    Despesas: expense,
+                    Saldo: income - expense
+                };
+            });
+        }
+
+        // Regular Monthly view
         const months = [];
-        // Show 6 months before and 5 months after selected date
         for (let i = -6; i <= 5; i++) {
             const d = new Date(currentDate.getFullYear(), currentDate.getMonth() + i, 1);
             months.push(d);
@@ -232,32 +289,24 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
             const label = date.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('.', '');
             const isSelected = m === currentMonth && y === currentYear;
 
-            // Filter transactions for this specific month/year
             const monthTrans = transactions.filter(t => {
-                const [ty, tm, td] = t.due_date.split('-').map(Number);
+                const [ty, tm] = t.due_date.split('-').map(Number);
                 return (tm - 1) === m && ty === y;
             });
 
-            const income = monthTrans
-                .filter(t => t.type === 'INCOME')
-                .reduce((acc, t) => acc + Number(t.amount), 0);
-
-            const expense = monthTrans
-                .filter(t => t.type === 'EXPENSE')
-                .reduce((acc, t) => acc + Number(t.amount), 0);
-
-            const balance = income - expense;
+            const income = monthTrans.filter(t => t.type === 'INCOME').reduce((acc, t) => acc + Number(t.amount), 0);
+            const expense = monthTrans.filter(t => t.type === 'EXPENSE').reduce((acc, t) => acc + Number(t.amount), 0);
 
             return {
                 name: label.charAt(0).toUpperCase() + label.slice(1),
                 Receitas: income,
                 Despesas: expense,
-                Saldo: balance,
+                Saldo: income - expense,
                 originalDate: date,
                 isSelected
             };
         });
-    }, [transactions, currentDate]);
+    }, [transactions, currentDate, chartPeriod, currentMonth, currentYear]);
     // ----------------------------------------------------------
 
     // --- Derived State (Filtered by CURRENT MONTH) ---
@@ -317,7 +366,11 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
 
         // 4. Conventional Filters
         if (searchTerm) {
-            data = data.filter(t => t.description.toLowerCase().includes(searchTerm.toLowerCase()));
+            const term = searchTerm.toLowerCase();
+            data = data.filter(t => 
+                t.description.toLowerCase().includes(term) ||
+                (t.contact_name && t.contact_name.toLowerCase().includes(term))
+            );
         }
         if (filterType !== 'ALL') {
             data = data.filter(t => t.type === filterType);
@@ -536,26 +589,26 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
 
     return (
         <div className="flex-1 flex flex-col h-full overflow-hidden relative page-transition">
-            <header className="h-20 bg-white border-b border-slate-100 flex items-center justify-between px-8 shrink-0 z-10">
-                <div>
-                    <h1 className="header-title">Financeiro</h1>
-                    <p className="header-subtitle">Gestão de caixa, contas e categorias</p>
+            <header className="h-[72px] bg-white/80 backdrop-blur-xl border-b border-m3-outline-variant/10 flex items-center justify-between px-10 shrink-0 z-10">
+                <div className="flex flex-col">
+                    <h1 className="text-2xl font-black text-m3-on-surface tracking-tight leading-none mb-1">Financeiro</h1>
+                    <p className="text-[10px] font-black text-m3-on-surface-variant/40 uppercase tracking-[0.2em]">Gestão de caixa, contas e categorias</p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-4">
                     {activeTab === 'transactions' && (
                         <>
                             <button
                                 onClick={() => openModal('INCOME')}
-                                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition-all"
+                                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-[12px] text-xs font-black shadow-lg shadow-emerald-200/50 transition-all hover:-translate-y-0.5"
                             >
-                                <Plus size={14} /> Nova Receita
+                                <span className="material-symbols-outlined text-lg">add_circle</span> Nova Receita
                             </button>
                             <button
                                 onClick={() => openModal('EXPENSE')}
-                                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition-all"
+                                className="flex items-center gap-2 bg-m3-error hover:bg-red-700 text-white px-5 py-2.5 rounded-[12px] text-xs font-black shadow-lg shadow-m3-error/20 transition-all hover:-translate-y-0.5"
                             >
-                                <Plus size={14} /> Nova Despesa
+                                <span className="material-symbols-outlined text-lg">do_not_disturb_on</span> Nova Despesa
                             </button>
                         </>
                     )}
@@ -563,24 +616,27 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
             </header>
 
             <main className="flex-1 overflow-y-auto p-8 relative">
-                {activeTab === 'overview' && (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className={activeTab === 'overview' ? 'block' : 'hidden'}>
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         {/* Financial Health Chart */}
-                        <div className="card-base">
-                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                        <div className="bg-m3-surface-container-low rounded-[32px] p-8 border border-m3-outline-variant/30 shadow-sm relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-m3-primary/5 rounded-full -mr-32 -mt-32"></div>
+                            
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10 relative z-10">
                                 <div>
-                                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                                        Movimentação Financeira
+                                    <h3 className="text-xl font-black text-m3-on-surface flex items-center gap-3">
+                                        <span className="material-symbols-outlined text-m3-primary">analytics</span> Movimentação Financeira
                                     </h3>
-                                    <p className="text-slate-400 text-sm font-medium">
-                                        Receitas vs Despesas ({currentMonthLabel})
+                                    <p className="text-[10px] font-black text-m3-on-surface-variant/40 uppercase tracking-[0.2em] mt-1">
+                                        Fluxo de Receitas vs Despesas ({currentMonthLabel})
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-100">
+                                <div className="flex items-center gap-2 bg-m3-surface-container-high p-1.5 rounded-[16px] border border-m3-outline-variant/20">
                                     {['Diário', 'Semanal', 'Mensal'].map((period) => (
                                         <button
                                             key={period}
-                                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${period === 'Diário' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600 hover:underline'
+                                            onClick={() => setChartPeriod(period as any)}
+                                            className={`px-5 py-2 rounded-[12px] text-xs font-black transition-all ${chartPeriod === period ? 'bg-m3-primary text-white shadow-lg shadow-m3-primary/20' : 'text-m3-on-surface-variant hover:text-m3-on-surface'
                                                 }`}
                                         >
                                             {period}
@@ -589,66 +645,88 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                                 </div>
                             </div>
 
-                            <div className="h-[300px] w-full">
+                            <div className="h-[340px] min-h-[340px] w-full relative z-10">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                    <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.03)" />
                                         <XAxis
                                             dataKey="name"
                                             axisLine={false}
                                             tickLine={false}
-                                            tick={{ fill: '#64748b', fontSize: 12 }}
-                                            dy={10}
+                                            tick={{ fill: 'rgba(0,0,0,0.4)', fontSize: 10, fontWeight: 900 }}
+                                            dy={15}
                                         />
                                         <YAxis
                                             axisLine={false}
                                             tickLine={false}
-                                            tick={{ fill: '#64748b', fontSize: 12 }}
-                                            tickFormatter={(value) => `R$${value / 1000}k`}
+                                            tick={{ fill: 'rgba(0,0,0,0.4)', fontSize: 10, fontWeight: 900 }}
+                                            tickFormatter={(value) => `R$ ${value >= 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
                                         />
                                         <Tooltip
-                                            contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                            formatter={(value: number) => formatCurrency(value)}
-                                            cursor={{ fill: '#f8fafc' }}
+                                            contentStyle={{ 
+                                                backgroundColor: 'rgba(255,255,255,0.95)', 
+                                                borderRadius: '20px', 
+                                                border: '1px solid rgba(0,0,0,0.05)', 
+                                                boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)',
+                                                backdropFilter: 'blur(10px)',
+                                                padding: '12px'
+                                            }}
+                                            itemStyle={{ fontSize: '12px', fontWeight: 900 }}
+                                            labelStyle={{ fontSize: '10px', fontWeight: 900, marginBottom: '8px', color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em' }}
+                                            formatter={(value: number) => [formatCurrency(value), '']}
+                                            cursor={{ fill: 'rgba(0,0,0,0.02)', radius: 10 }}
                                         />
-                                        <Bar dataKey="Receitas" fill="#2563eb" radius={[6, 6, 0, 0]} barSize={32} />
-                                        <Bar dataKey="Despesas" fill="#93c5fd" radius={[6, 6, 0, 0]} barSize={32} />
-                                        <ReferenceLine y={0} stroke="#e2e8f0" />
+                                        <Bar dataKey="Receitas" fill="#10b981" radius={[8, 8, 8, 8]} barSize={24} />
+                                        <Bar dataKey="Despesas" fill="#ef4444" radius={[8, 8, 8, 8]} barSize={24} />
+                                        <ReferenceLine y={0} stroke="rgba(0,0,0,0.05)" />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
                         </div>
 
                         {/* Next Payables & Receivables Grid */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             {/* Next Payables */}
-                            <div className="card-base">
-                                <div className="flex items-center justify-between mb-6">
-                                    <h3 className="text-sm font-black text-slate-700 flex items-center gap-2 uppercase tracking-widest">
-                                        <ArrowDownCircle className="text-red-500" size={18} /> CONTAS A PAGAR (PRÓXIMAS)
+                            <div className="bg-m3-surface-container-low rounded-[32px] p-8 border border-m3-outline-variant/30 shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-m3-error/5 rounded-full -mr-12 -mt-12"></div>
+                                <div className="flex items-center justify-between mb-8">
+                                    <h3 className="text-[10px] font-black text-m3-on-surface-variant uppercase tracking-[0.2em] flex items-center gap-3">
+                                        <span className="material-symbols-outlined text-m3-error text-xl font-variation-fill">event_busy</span> Contas a Pagar
                                     </h3>
                                     <div className="relative group">
-                                        <button className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 transition-all">
-                                            {currentDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('.', '').charAt(0).toUpperCase() + currentDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('.', '').slice(1)}
-                                            <ChevronDown size={14} className="text-slate-400" />
+                                        <button className="flex items-center gap-2 bg-m3-surface-container-high px-4 py-2 rounded-xl border border-m3-outline-variant/10 text-xs font-black text-m3-on-surface transition-all hover:bg-m3-surface-container-highest">
+                                            {currentDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).toUpperCase()}
+                                            <span className="material-symbols-outlined text-base">expand_more</span>
                                         </button>
-                                        <div className="absolute right-0 top-full mt-2 bg-white border border-slate-100 shadow-xl rounded-2xl p-2 hidden group-hover:block z-20 min-w-[150px] animate-in fade-in zoom-in-95 duration-200">
-                                            <button onClick={handlePrevMonth} className="w-full text-left px-3 py-2 hover:bg-slate-50 hover:underline transition-all rounded-lg text-xs font-medium text-slate-600">Mês Anterior</button>
-                                            <button onClick={handleNextMonth} className="w-full text-left px-3 py-2 hover:bg-slate-50 hover:underline transition-all rounded-lg text-xs font-medium text-slate-600">Próximo Mês</button>
+                                        <div className="absolute right-0 top-full mt-2 bg-white border border-m3-outline-variant/10 shadow-2xl rounded-2xl p-2 hidden group-hover:block z-20 min-w-[180px] animate-in fade-in zoom-in-95 duration-200 backdrop-blur-xl">
+                                            <button onClick={handlePrevMonth} className="w-full text-left px-4 py-3 hover:bg-m3-surface-container-low transition-all rounded-xl text-xs font-black text-m3-on-surface-variant flex items-center gap-3">
+                                                <span className="material-symbols-outlined text-lg">chevron_left</span> Mês Anterior
+                                            </button>
+                                            <button onClick={handleNextMonth} className="w-full text-left px-4 py-3 hover:bg-m3-surface-container-low transition-all rounded-xl text-xs font-black text-m3-on-surface-variant flex items-center gap-3">
+                                                <span className="material-symbols-outlined text-lg">chevron_right</span> Próximo Mês
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
                                 {nextPayables.length === 0 ? (
-                                    <p className="text-slate-400 text-sm py-4">Nenhuma conta pendente.</p>
+                                    <div className="flex flex-col items-center justify-center py-12 text-m3-on-surface-variant/30">
+                                        <span className="material-symbols-outlined text-4xl mb-2">check_circle</span>
+                                        <p className="text-xs font-black uppercase tracking-widest">Tudo em dia!</p>
+                                    </div>
                                 ) : (
                                     <div className="space-y-3">
                                         {nextPayables.map(item => (
-                                            <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                                <div>
-                                                    <p className="font-semibold text-slate-700 text-sm">{item.description}</p>
-                                                    <p className="text-xs text-slate-500">{formatDate(item.due_date)}</p>
+                                            <div key={item.id} className="flex items-center justify-between p-4 bg-white/50 rounded-2xl border border-m3-outline-variant/10 hover:border-m3-error/20 transition-all group">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-10 h-10 rounded-xl bg-m3-error/10 text-m3-error flex items-center justify-center translate-y-0 group-hover:-translate-y-1 transition-transform">
+                                                        <span className="material-symbols-outlined text-xl">payments</span>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-black text-m3-on-surface text-sm truncate max-w-[180px]">{item.description}</p>
+                                                        <p className="text-[10px] font-black text-m3-on-surface-variant/40 uppercase tracking-wider mt-0.5">{formatDate(item.due_date)}</p>
+                                                    </div>
                                                 </div>
-                                                <span className="font-bold text-red-600 text-sm">- {formatCurrency(item.amount)}</span>
+                                                <span className="font-black text-m3-error text-sm">- {formatCurrency(item.amount)}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -656,33 +734,46 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                             </div>
 
                             {/* Next Receivables */}
-                            <div className="card-base">
-                                <div className="flex items-center justify-between mb-6">
-                                    <h3 className="text-sm font-black text-slate-700 flex items-center gap-2 uppercase tracking-widest">
-                                        <ArrowUpCircle className="text-emerald-500" size={18} /> CONTAS A RECEBER (PRÓXIMAS)
+                            <div className="bg-m3-surface-container-low rounded-[32px] p-8 border border-m3-outline-variant/30 shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -mr-12 -mt-12"></div>
+                                <div className="flex items-center justify-between mb-8">
+                                    <h3 className="text-[10px] font-black text-m3-on-surface-variant uppercase tracking-[0.2em] flex items-center gap-3">
+                                        <span className="material-symbols-outlined text-emerald-500 text-xl font-variation-fill">event_available</span> Contas a Receber
                                     </h3>
                                     <div className="relative group">
-                                        <button className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 transition-all">
-                                            {currentDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('.', '').charAt(0).toUpperCase() + currentDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('.', '').slice(1)}
-                                            <ChevronDown size={14} className="text-slate-400" />
+                                        <button className="flex items-center gap-2 bg-m3-surface-container-high px-4 py-2 rounded-xl border border-m3-outline-variant/10 text-xs font-black text-m3-on-surface transition-all hover:bg-m3-surface-container-highest">
+                                            {currentDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).toUpperCase()}
+                                            <span className="material-symbols-outlined text-base">expand_more</span>
                                         </button>
-                                        <div className="absolute right-0 top-full mt-2 bg-white border border-slate-100 shadow-xl rounded-2xl p-2 hidden group-hover:block z-20 min-w-[150px] animate-in fade-in zoom-in-95 duration-200">
-                                            <button onClick={handlePrevMonth} className="w-full text-left px-3 py-2 hover:bg-slate-50 hover:underline transition-all rounded-lg text-xs font-medium text-slate-600">Mês Anterior</button>
-                                            <button onClick={handleNextMonth} className="w-full text-left px-3 py-2 hover:bg-slate-50 hover:underline transition-all rounded-lg text-xs font-medium text-slate-600">Próximo Mês</button>
+                                        <div className="absolute right-0 top-full mt-2 bg-white border border-m3-outline-variant/10 shadow-2xl rounded-2xl p-2 hidden group-hover:block z-20 min-w-[180px] animate-in fade-in zoom-in-95 duration-200 backdrop-blur-xl">
+                                            <button onClick={handlePrevMonth} className="w-full text-left px-4 py-3 hover:bg-m3-surface-container-low transition-all rounded-xl text-xs font-black text-m3-on-surface-variant flex items-center gap-3">
+                                                <span className="material-symbols-outlined text-lg">chevron_left</span> Mês Anterior
+                                            </button>
+                                            <button onClick={handleNextMonth} className="w-full text-left px-4 py-3 hover:bg-m3-surface-container-low transition-all rounded-xl text-xs font-black text-m3-on-surface-variant flex items-center gap-3">
+                                                <span className="material-symbols-outlined text-lg">chevron_right</span> Próximo Mês
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
                                 {nextReceivables.length === 0 ? (
-                                    <p className="text-slate-400 text-sm py-4">Nenhum recebimento pendente.</p>
+                                    <div className="flex flex-col items-center justify-center py-12 text-m3-on-surface-variant/30">
+                                        <span className="material-symbols-outlined text-4xl mb-2">savings</span>
+                                        <p className="text-xs font-black uppercase tracking-widest">Nenhum recebimento</p>
+                                    </div>
                                 ) : (
                                     <div className="space-y-3">
                                         {nextReceivables.map(item => (
-                                            <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                                <div>
-                                                    <p className="font-semibold text-slate-700 text-sm">{item.description}</p>
-                                                    <p className="text-xs text-slate-500">{formatDate(item.due_date)}</p>
+                                            <div key={item.id} className="flex items-center justify-between p-4 bg-white/50 rounded-2xl border border-m3-outline-variant/10 hover:border-emerald-200/50 transition-all group">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center translate-y-0 group-hover:-translate-y-1 transition-transform">
+                                                        <span className="material-symbols-outlined text-xl">account_balance_wallet</span>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-black text-m3-on-surface text-sm truncate max-w-[180px]">{item.description}</p>
+                                                        <p className="text-[10px] font-black text-m3-on-surface-variant/40 uppercase tracking-wider mt-0.5">{formatDate(item.due_date)}</p>
+                                                    </div>
                                                 </div>
-                                                <span className="font-bold text-emerald-600 text-sm">+ {formatCurrency(item.amount)}</span>
+                                                <span className="font-black text-emerald-600 text-sm">+ {formatCurrency(item.amount)}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -690,7 +781,7 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                             </div>
                         </div>
                     </div>
-                )}
+                </div>
                 <AddTransactionModal
                     isOpen={isModalOpen}
                     onClose={() => {
@@ -704,6 +795,7 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                     initialAccountId={selectedAccountForNewTransaction}
                     accounts={accounts}
                     categories={categories}
+                    contacts={contacts}
                     onSuccess={() => {
                         refresh(); // Reload data
                     }}
@@ -999,19 +1091,25 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                     </div>
                 )}
 
-                {activeTab === 'transactions' && (
+                <div className={activeTab === 'transactions' ? 'block' : 'hidden'}>
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-                        {/* --- DASHBOARD CARDS (Clean White Layout) --- */}
-                        {/* --- DASHBOARD CARDS (Clean White Layout) --- */}
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+                        {/* --- DASHBOARD CARDS (M3 Premium Layout) --- */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-10">
                             {/* Vencidos */}
                             <button
                                 onClick={() => setActiveQuickFilter(activeQuickFilter === 'OVERDUE' ? 'ALL' : 'OVERDUE')}
-                                className={`p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center transition-all ${activeQuickFilter === 'OVERDUE' ? 'bg-red-50 ring-2 ring-red-100' : 'bg-white hover:border-red-200'}`}
+                                className={`group p-6 rounded-[32px] border transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden ${
+                                    activeQuickFilter === 'OVERDUE' 
+                                    ? 'bg-m3-error-container border-m3-error/30 ring-2 ring-m3-error/20 shadow-lg scale-[1.02]' 
+                                    : 'bg-m3-surface-container-low border-m3-outline-variant/30 hover:border-m3-error/40 hover:shadow-md'
+                                }`}
                             >
-                                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Vencidos</p>
-                                <span className={`text-xl font-black text-red-600`}>
+                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-colors ${activeQuickFilter === 'OVERDUE' ? 'bg-m3-error text-white' : 'bg-m3-error/10 text-m3-error'}`}>
+                                    <span className="material-symbols-outlined text-2xl font-variation-fill">event_busy</span>
+                                </div>
+                                <p className="text-[10px] font-black text-m3-on-surface-variant uppercase tracking-[0.2em] mb-1 opacity-60">Vencidos</p>
+                                <span className="text-xl font-black text-m3-on-surface tracking-tighter">
                                     {formatCurrency(stats.valOverdue)}
                                 </span>
                             </button>
@@ -1019,10 +1117,17 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                             {/* Vence Hoje */}
                             <button
                                 onClick={() => setActiveQuickFilter(activeQuickFilter === 'TODAY' ? 'ALL' : 'TODAY')}
-                                className={`p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center transition-all ${activeQuickFilter === 'TODAY' ? 'bg-orange-50 ring-2 ring-orange-100' : 'bg-white hover:border-orange-200'}`}
+                                className={`group p-6 rounded-[32px] border transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden ${
+                                    activeQuickFilter === 'TODAY' 
+                                    ? 'bg-m3-primary-container border-m3-primary/30 ring-2 ring-m3-primary/20 shadow-lg scale-[1.02]' 
+                                    : 'bg-m3-surface-container-low border-m3-outline-variant/30 hover:border-m3-primary/40 hover:shadow-md'
+                                }`}
                             >
-                                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Vencem hoje</p>
-                                <span className={`text-xl font-black text-orange-600`}>
+                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-colors ${activeQuickFilter === 'TODAY' ? 'bg-m3-primary text-white' : 'bg-m3-primary/10 text-m3-primary'}`}>
+                                    <span className="material-symbols-outlined text-2xl">today</span>
+                                </div>
+                                <p className="text-[10px] font-black text-m3-on-surface-variant uppercase tracking-[0.2em] mb-1 opacity-60">Vencem hoje</p>
+                                <span className="text-xl font-black text-m3-on-surface tracking-tighter">
                                     {formatCurrency(stats.valToday)}
                                 </span>
                             </button>
@@ -1030,10 +1135,17 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                             {/* A Vencer */}
                             <button
                                 onClick={() => setActiveQuickFilter(activeQuickFilter === 'FUTURE' ? 'ALL' : 'FUTURE')}
-                                className={`p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center transition-all ${activeQuickFilter === 'FUTURE' ? 'bg-blue-50 ring-2 ring-blue-100' : 'bg-white hover:border-blue-200'}`}
+                                className={`group p-6 rounded-[32px] border transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden ${
+                                    activeQuickFilter === 'FUTURE' 
+                                    ? 'bg-m3-secondary-container border-m3-secondary/30 ring-2 ring-m3-secondary/20 shadow-lg scale-[1.02]' 
+                                    : 'bg-m3-surface-container-low border-m3-outline-variant/30 hover:border-m3-secondary/40 hover:shadow-md'
+                                }`}
                             >
-                                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">A vencer</p>
-                                <span className={`text-xl font-black text-blue-600`}>
+                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-colors ${activeQuickFilter === 'FUTURE' ? 'bg-m3-secondary text-white' : 'bg-m3-secondary/10 text-m3-secondary'}`}>
+                                    <span className="material-symbols-outlined text-2xl">event_upcoming</span>
+                                </div>
+                                <p className="text-[10px] font-black text-m3-on-surface-variant uppercase tracking-[0.2em] mb-1 opacity-60">A vencer</p>
+                                <span className="text-xl font-black text-m3-on-surface tracking-tighter">
                                     {formatCurrency(stats.valFuture)}
                                 </span>
                             </button>
@@ -1041,221 +1153,261 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                             {/* Pagos */}
                             <button
                                 onClick={() => setActiveQuickFilter(activeQuickFilter === 'PAID' ? 'ALL' : 'PAID')}
-                                className={`p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center transition-all ${activeQuickFilter === 'PAID' ? 'bg-emerald-50 ring-2 ring-emerald-100' : 'bg-white hover:border-emerald-200'}`}
+                                className={`group p-6 rounded-[32px] border transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden ${
+                                    activeQuickFilter === 'PAID' 
+                                    ? 'bg-emerald-100 border-emerald-500/30 ring-2 ring-emerald-500/20 shadow-lg scale-[1.02]' 
+                                    : 'bg-m3-surface-container-low border-m3-outline-variant/30 hover:border-emerald-500/40 hover:shadow-md'
+                                }`}
                             >
-                                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Pagos</p>
-                                <span className={`text-xl font-black text-emerald-600`}>
+                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-colors ${activeQuickFilter === 'PAID' ? 'bg-emerald-600 text-white' : 'bg-emerald-50/50 text-emerald-600'}`}>
+                                    <span className="material-symbols-outlined text-2xl font-variation-fill">check_circle</span>
+                                </div>
+                                <p className="text-[10px] font-black text-m3-on-surface-variant uppercase tracking-[0.2em] mb-1 opacity-60">Pagos</p>
+                                <span className="text-xl font-black text-m3-on-surface tracking-tighter">
                                     {formatCurrency(stats.valPaid)}
                                 </span>
                             </button>
 
                             {/* Total do Período */}
-                            <div className="p-6 rounded-2xl border border-blue-100 bg-blue-50/30 shadow-sm flex flex-col items-center justify-center text-center">
-                                <div className="flex items-center gap-1 mb-2">
-                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Total do período</p>
-                                    <div className="text-slate-400 cursor-help" title="Saldo líquido (Receitas - Despesas)">
-                                        <AlertCircle size={12} />
+                            <div className="p-6 rounded-[32px] border border-m3-outline-variant/30 bg-m3-surface-container-low flex flex-col items-center justify-center text-center shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-m3-primary/5 rounded-full -mr-8 -mt-8" />
+                                <div className="w-12 h-12 rounded-2xl bg-m3-primary/10 text-m3-primary flex items-center justify-center mb-4">
+                                    <span className="material-symbols-outlined text-2xl">account_balance_wallet</span>
+                                </div>
+                                <div className="flex items-center gap-1 mb-1">
+                                    <p className="text-[10px] font-black text-m3-on-surface-variant uppercase tracking-[0.2em] opacity-60">Saldo Período</p>
+                                    <div className="text-m3-on-surface-variant/40 cursor-help" title="Saldo líquido (Receitas - Despesas)">
+                                        <span className="material-symbols-outlined text-xs">info</span>
                                     </div>
                                 </div>
-                                <span className={`text-xl font-black ${stats.totalBalance < 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                                <span className={`text-xl font-black tracking-tighter ${stats.totalBalance < 0 ? 'text-m3-error' : 'text-m3-primary'}`}>
                                     {formatCurrency(stats.totalBalance)}
                                 </span>
                             </div>
                         </div>
 
-
-                        {/* Filters Bar */}
-                        <div className="card-base mb-6 backdrop-blur-xl flex flex-col lg:flex-row gap-4 lg:items-center justify-between p-4">
-                            <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-                                <div className="relative flex-1 lg:flex-none lg:w-64">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
+                        {/* Filters Bar (M3 Premium Redesign) */}
+                        <div className="bg-m3-surface-container-low rounded-[32px] p-2 border border-m3-outline-variant/30 shadow-sm mb-10 flex flex-col divide-y divide-m3-outline-variant/10">
+                            {/* Top Row: Search & Tabs */}
+                            <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2 p-2">
+                                <div className="relative flex-1 group">
+                                    <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-m3-on-surface-variant/40 group-focus-within:text-m3-primary transition-colors">search</span>
                                     <input
                                         type="text"
-                                        placeholder="Buscar lançamentos..."
-                                        className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 text-sm"
+                                        placeholder="Buscar transação, contato ou descrição..."
+                                        className="w-full pl-12 pr-6 py-3.5 bg-m3-surface-container-high/50 border border-transparent rounded-[24px] outline-none focus:bg-white focus:border-m3-primary/30 focus:ring-4 focus:ring-m3-primary/5 text-sm font-medium transition-all placeholder:text-m3-on-surface-variant/30"
                                         value={searchTerm}
                                         onChange={e => setSearchTerm(e.target.value)}
                                     />
                                 </div>
 
-                                <div className="flex items-center bg-slate-100 p-1 rounded-xl">
-                                    <button
-                                        onClick={() => setFilterType('ALL')}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterType === 'ALL' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
-                                    >
-                                        Todos
-                                    </button>
-                                    <button
-                                        onClick={() => setFilterType('INCOME')}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterType === 'INCOME' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}
-                                    >
-                                        Receitas
-                                    </button>
-                                    <button
-                                        onClick={() => setFilterType('EXPENSE')}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterType === 'EXPENSE' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500'}`}
-                                    >
-                                        Despesas
-                                    </button>
-                                </div>
-
-                                {/* Date range and Month selector inputs */}
-                                <div className="flex flex-wrap items-center gap-2 bg-slate-100 p-1 rounded-xl">
-                                    {/* Month Navigator as part of the flow */}
-                                    <div className={`flex items-center bg-white border border-slate-200 rounded-lg p-0.5 ${(startDate || endDate) ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
+                                <div className="flex items-center bg-m3-surface-container-high/60 p-1 rounded-[24px] border border-m3-outline-variant/10 self-start lg:self-auto">
+                                    {[
+                                        { id: 'ALL', label: 'Todos', icon: 'list' },
+                                        { id: 'INCOME', label: 'Receitas', icon: 'trending_up', activeClass: 'bg-emerald-600 text-white shadow-lg shadow-emerald-200/50' },
+                                        { id: 'EXPENSE', label: 'Despesas', icon: 'trending_down', activeClass: 'bg-m3-error text-white shadow-lg shadow-red-200/50' }
+                                    ].map((t) => (
                                         <button
-                                            onClick={() => {
-                                                setStartDate('');
-                                                setEndDate('');
-                                                handlePrevMonth();
-                                            }}
-                                            className="p-1 hover:bg-slate-50 text-slate-500 rounded-md transition-all"
+                                            key={t.id}
+                                            onClick={() => setFilterType(t.id as any)}
+                                            className={`flex items-center gap-2 px-5 py-2.5 rounded-[20px] text-xs font-black uppercase tracking-widest transition-all ${filterType === t.id 
+                                                ? (t.activeClass || 'bg-white text-m3-on-surface shadow-sm') 
+                                                : 'text-m3-on-surface-variant opacity-60 hover:opacity-100 hover:bg-white/40'}`}
                                         >
-                                            <ChevronDown className="rotate-90" size={12} />
+                                            <span className="material-symbols-outlined text-lg">{t.icon}</span>
+                                            {t.label}
                                         </button>
-                                        <div className="px-2 flex flex-col items-center min-w-[100px]">
-                                            <span className="text-[10px] font-black text-slate-700 uppercase tracking-tight">{currentMonthLabel}</span>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Bottom Row: Dates & Secondary Filters */}
+                            <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4 p-2 pt-3">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    {/* Month Selector */}
+                                    <div className={`flex items-center bg-m3-surface-container-high/60 border border-m3-outline-variant/10 rounded-[20px] p-1 transition-all ${(startDate || endDate) ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
+                                        <button
+                                            onClick={() => { setStartDate(''); setEndDate(''); handlePrevMonth(); }}
+                                            className="w-8 h-8 flex items-center justify-center hover:bg-white rounded-full text-m3-on-surface-variant transition-all hover:shadow-sm"
+                                        >
+                                            <span className="material-symbols-outlined text-xl">chevron_left</span>
+                                        </button>
+                                        <div className="px-4 flex flex-col items-center min-w-[140px]">
+                                            <span className="text-[10px] font-black text-m3-on-surface uppercase tracking-[0.15em]">{currentMonthLabel}</span>
                                         </div>
                                         <button
-                                            onClick={() => {
-                                                setStartDate('');
-                                                setEndDate('');
-                                                handleNextMonth();
-                                            }}
-                                            className="p-1 hover:bg-slate-50 text-slate-500 rounded-md transition-all"
+                                            onClick={() => { setStartDate(''); setEndDate(''); handleNextMonth(); }}
+                                            className="w-8 h-8 flex items-center justify-center hover:bg-white rounded-full text-m3-on-surface-variant transition-all hover:shadow-sm"
                                         >
-                                            <ChevronDown className="-rotate-90" size={12} />
+                                            <span className="material-symbols-outlined text-xl">chevron_right</span>
                                         </button>
                                     </div>
 
-                                    <div className="w-px h-4 bg-slate-200 mx-1 hidden sm:block"></div>
+                                    <div className="hidden sm:block w-px h-6 bg-m3-outline-variant/20 mx-1"></div>
 
-                                    <div className="flex items-center gap-1">
+                                    {/* Custom Range */}
+                                    <div className="flex items-center gap-2 bg-m3-surface-container-high/60 border border-m3-outline-variant/10 rounded-[20px] px-4 py-1.5 h-[42px]">
+                                        <span className="material-symbols-outlined text-m3-on-surface-variant/40 text-lg">calendar_month</span>
                                         <input
                                             type="date"
                                             value={startDate}
                                             onChange={(e) => setStartDate(e.target.value)}
-                                            className="bg-transparent border-none text-[11px] font-bold text-slate-600 outline-none px-1 py-1 w-28 uppercase"
+                                            className="bg-transparent border-none text-[10px] font-black text-m3-on-surface outline-none w-24 uppercase p-0"
                                         />
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Até</span>
+                                        <span className="text-[8px] font-black text-m3-on-surface-variant/30 uppercase tracking-widest px-1">até</span>
                                         <input
                                             type="date"
                                             value={endDate}
                                             onChange={(e) => setEndDate(e.target.value)}
-                                            className="bg-transparent border-none text-[11px] font-bold text-slate-600 outline-none px-1 py-1 w-28 uppercase"
+                                            className="bg-transparent border-none text-[10px] font-black text-m3-on-surface outline-none w-24 uppercase p-0"
                                         />
-                                        {(startDate || endDate) && (
-                                            <button
-                                                onClick={() => { setStartDate(''); setEndDate(''); }}
-                                                className="p-1 text-slate-400 hover:text-red-500 transition-colors"
-                                                title="Limpar período personalizado"
-                                            >
-                                                <X size={14} />
-                                            </button>
-                                        )}
                                     </div>
                                 </div>
 
-                                <select
-                                    className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all appearance-none pr-10"
-                                    value={filterStatus}
-                                    onChange={(e: any) => setFilterStatus(e.target.value)}
-                                >
-                                    <option value="ALL">Status: Todos</option>
-                                    <option value="PENDING">Em Aberto</option>
-                                    <option value="PARTIAL">Pago Parcial</option>
-                                    <option value="PAID">Liquidado</option>
-                                </select>
-                            </div>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <div className="relative">
+                                        <select
+                                            className="bg-m3-surface-container-high/60 border border-m3-outline-variant/10 rounded-[20px] pl-5 pr-10 py-2.5 text-[10px] font-black uppercase tracking-widest text-m3-on-surface-variant outline-none focus:ring-4 focus:ring-m3-primary/5 transition-all appearance-none cursor-pointer"
+                                            value={filterStatus}
+                                            onChange={(e: any) => setFilterStatus(e.target.value)}
+                                        >
+                                            <option value="ALL">Status: Todos</option>
+                                            <option value="PENDING">Em Aberto</option>
+                                            <option value="PARTIAL">Pago Parcial</option>
+                                            <option value="PAID">Liquidado</option>
+                                        </select>
+                                        <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-m3-on-surface-variant pointer-events-none text-lg">unfold_more</span>
+                                    </div>
 
-                            <button className="flex items-center gap-2 text-slate-500 hover:text-blue-600 font-semibold text-sm px-4 py-2 hover:bg-blue-50 rounded-lg transition-colors">
-                                <Download size={18} /> Exportar
-                            </button>
+                                    <div className="w-px h-6 bg-m3-outline-variant/20 mx-1"></div>
+
+                                    {(filterStatus !== 'ALL' || searchTerm !== '' || startDate !== '' || activeQuickFilter !== 'ALL' || filterType !== 'ALL') && (
+                                        <button
+                                            onClick={() => {
+                                                setFilterType('ALL');
+                                                setFilterStatus('ALL');
+                                                setSearchTerm('');
+                                                setStartDate('');
+                                                setEndDate('');
+                                                setActiveQuickFilter('ALL');
+                                            }}
+                                            className="h-[42px] px-6 rounded-[20px] bg-m3-error/10 text-m3-error text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-m3-error/20 transition-all group"
+                                        >
+                                            <span className="material-symbols-outlined text-lg group-hover:rotate-90 transition-transform">close</span>
+                                            Limpar Filtros
+                                        </button>
+                                    )}
+
+                                    <button className="h-[42px] px-6 rounded-[20px] text-m3-on-surface-variant/60 hover:text-m3-primary hover:bg-m3-primary/5 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all">
+                                        <span className="material-symbols-outlined text-lg">file_download</span>
+                                        Exportar
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Transactions Table */}
-                        <div className="card-base p-0 overflow-hidden">
-                            <table className="table-base">
+                        <div className="bg-m3-surface-container-low rounded-[32px] border border-m3-outline-variant/30 shadow-sm overflow-hidden">
+                            <table className="w-full border-collapse">
                                 <thead>
-                                    <tr className="bg-transparent border-b border-black/5 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                        <th className="px-6 py-4">
-                                            <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-200" />
+                                    <tr className="bg-m3-surface-container/30 border-b border-m3-outline-variant/10">
+                                        <th className="px-6 py-5 text-left">
+                                            <div className="flex items-center justify-center w-5 h-5 rounded border border-m3-outline-variant opacity-30"></div>
                                         </th>
-                                        <th className="px-6 py-4">Vencimento</th>
-                                        <th className="px-6 py-4">Paga... <AlertCircle size={12} className="inline ml-1 opacity-50 cursor-help" /></th>
-                                        <th className="px-6 py-4">Descrição</th>
-                                        <th className="px-6 py-4 text-right">Valor (R$)</th>
-                                        <th className="px-6 py-4 text-center">Situação</th>
-                                        <th className="px-6 py-4 text-right">Ações</th>
+                                        <th className="px-6 py-5 text-left text-[10px] font-black text-m3-on-surface-variant uppercase tracking-[0.2em]">Vencimento</th>
+                                        <th className="px-6 py-5 text-left text-[10px] font-black text-m3-on-surface-variant uppercase tracking-[0.2em]">Liquidado em</th>
+                                        <th className="px-6 py-5 text-left text-[10px] font-black text-m3-on-surface-variant uppercase tracking-[0.2em]">Descrição / Categoria</th>
+                                        <th className="px-6 py-5 text-left text-[10px] font-black text-m3-on-surface-variant uppercase tracking-[0.2em]">Favorecido</th>
+                                        <th className="px-6 py-5 text-right text-[10px] font-black text-m3-on-surface-variant uppercase tracking-[0.2em]">Valor Total</th>
+                                        <th className="px-6 py-5 text-center text-[10px] font-black text-m3-on-surface-variant uppercase tracking-[0.2em]">Situação</th>
+                                        <th className="px-6 py-5 text-right text-[10px] font-black text-m3-on-surface-variant uppercase tracking-[0.2em]">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
                                     {loading ? (
-                                        <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-500">Carregando dados financeiros...</td></tr>
+                                        <tr><td colSpan={8} className="px-6 py-20 text-center text-m3-on-surface-variant/40 font-black uppercase tracking-widest text-[10px]">Carregando dados financeiros...</td></tr>
                                     ) : filteredTransactions.length === 0 ? (
-                                        <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-400">Nenhum lançamento encontrado para os filtros.</td></tr>
+                                        <tr><td colSpan={8} className="px-6 py-20 text-center text-m3-on-surface-variant/40 font-black uppercase tracking-widest text-[10px]">Nenhum lançamento encontrado para os filtros.</td></tr>
                                     ) : (
                                         filteredTransactions.map((item) => (
-                                            <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
-                                                <td className="px-6 py-4">
-                                                    <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-200" />
+                                            <tr key={item.id} className="hover:bg-m3-surface-container-high/40 transition-all duration-200 group border-b border-m3-outline-variant/5 last:border-0">
+                                                <td className="px-6 py-5">
+                                                    <div className="w-5 h-5 rounded border border-m3-outline-variant/30 group-hover:border-m3-primary/50 transition-colors"></div>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="text-sm font-medium text-slate-700">{formatDate(item.due_date)}</div>
+                                                <td className="px-6 py-5">
+                                                    <div className="text-sm font-bold text-m3-on-surface">{formatDate(item.due_date)}</div>
                                                 </td>
-                                                <td className="px-6 py-4 text-xs font-semibold text-slate-400">
-                                                    {item.payment_date ? formatDate(item.payment_date) : '-'}
+                                                <td className="px-6 py-5">
+                                                    <div className="text-[11px] font-black text-m3-on-surface-variant/50 uppercase tracking-wider">
+                                                        {item.payment_date ? formatDate(item.payment_date) : '—'}
+                                                    </div>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex flex-col">
+                                                <td className="px-6 py-5">
+                                                    <div className="flex flex-col gap-1.5">
                                                         <div className="flex items-center gap-2">
-                                                            {item.description.includes('(') && <RotateCcw size={12} className="text-slate-400 font-bold" />}
-                                                            <span className="text-sm font-semibold text-slate-800">{item.description}</span>
+                                                            {item.description.includes('(') && <span className="material-symbols-outlined text-sm text-m3-on-surface-variant/40">history</span>}
+                                                            <span className="text-sm font-black text-m3-on-surface leading-snug">{item.description}</span>
                                                         </div>
-                                                        <div className="flex items-center gap-2 mt-1">
-                                                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 font-bold uppercase tracking-wider">{item.category_name}</span>
-                                                            {item.account_name && <span className="text-[10px] text-slate-400 font-medium">| {item.account_name}</span>}
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-m3-surface-container text-m3-on-surface-variant uppercase tracking-widest">{item.category_name}</span>
+                                                            {item.account_name && <span className="text-[9px] font-bold text-m3-on-surface-variant/40 uppercase tracking-widest flex items-center gap-1.5"><span className="w-1 h-1 rounded-full bg-m3-on-surface-variant/20"></span> {item.account_name}</span>}
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    {(item.status === 'PARTIAL' || (item.status === 'PENDING' && Number(item.paid_amount) > 0)) ? (
-                                                        <>
-                                                            <div className={`text-sm font-black ${item.type === 'INCOME' ? 'text-emerald-600' : 'text-red-600'}`}>
-                                                                {item.type === 'INCOME' ? '+' : '-'} {formatCurrency(Number(item.amount) - (item.paid_amount || 0))}
-                                                            </div>
-                                                            <div className="text-[10px] text-slate-400 font-bold mt-1 line-through decoration-slate-400">
-                                                                Total: {formatCurrency(item.amount)}
-                                                            </div>
-                                                        </>
-                                                    ) : (
-                                                        <div className={`text-sm font-black ${item.type === 'INCOME' ? 'text-emerald-600' : 'text-red-600'}`}>
-                                                            {item.type === 'INCOME' ? '+' : '-'} {formatCurrency(item.amount)}
-                                                        </div>
-                                                    )}
+                                                <td className="px-6 py-5">
+                                                    <div className="text-[11px] font-black text-m3-on-surface-variant/70 uppercase tracking-widest">
+                                                        {item.contact_name || '—'}
+                                                    </div>
                                                 </td>
-                                                <td className="px-6 py-4">
+                                                <td className="px-6 py-5 text-right">
+                                                    <div className="flex flex-col items-end">
+                                                        {(item.status === 'PARTIAL' || (item.status === 'PENDING' && Number(item.paid_amount) > 0)) ? (
+                                                            <>
+                                                                <div className={`text-sm font-black ${item.type === 'INCOME' ? 'text-emerald-600' : 'text-m3-error'}`}>
+                                                                    {item.type === 'INCOME' ? '+' : '-'} {formatCurrency(Number(item.amount) - (item.paid_amount || 0))}
+                                                                </div>
+                                                                <div className="text-[9px] text-m3-on-surface-variant/40 font-black uppercase tracking-widest mt-0.5 line-through">
+                                                                    Total: {formatCurrency(item.amount)}
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <div className={`text-sm font-black ${item.type === 'INCOME' ? 'text-emerald-600' : 'text-m3-error'}`}>
+                                                                {item.type === 'INCOME' ? '+' : '-'} {formatCurrency(item.amount)}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-5">
                                                     <div className="flex justify-center">
-                                                        {item.status === 'PAID' && (
-                                                            <span className="status-badge status-success">Liquidado</span>
-                                                        )}
-                                                        {item.status === 'PENDING' && (
-                                                            <span className="status-badge status-warning">Em Aberto</span>
-                                                        )}
-                                                        {item.status === 'PARTIAL' && (
-                                                            <span className="status-badge status-info">Pago Parcial</span>
+                                                        {item.status === 'PAID' ? (
+                                                            <span className="px-3 py-1 rounded-full bg-emerald-100/50 text-emerald-700 text-[9px] font-black uppercase tracking-widest border border-emerald-200/50 flex items-center gap-1.5">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Liquidado
+                                                            </span>
+                                                        ) : item.status === 'PENDING' ? (
+                                                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${
+                                                                new Date(item.due_date) < new Date() && !item.payment_date 
+                                                                ? 'bg-m3-error-container/30 text-m3-error border-m3-error/20' 
+                                                                : 'bg-amber-100/50 text-amber-700 border-amber-200/50'
+                                                            }`}>
+                                                                <span className={`w-1.5 h-1.5 rounded-full ${new Date(item.due_date) < new Date() && !item.payment_date ? 'bg-m3-error' : 'bg-amber-500'}`}></span>
+                                                                {new Date(item.due_date) < new Date() && !item.payment_date ? 'Vencido' : 'Em Aberto'}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-3 py-1 rounded-full bg-sky-100/50 text-sky-700 text-[9px] font-black uppercase tracking-widest border border-sky-200/50 flex items-center gap-1.5">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-sky-500 shadow-[0_0_5px_rgba(14,165,233,0.5)]"></span> Parcial
+                                                            </span>
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <td className="px-6 py-5 text-right">
+                                                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-2 group-hover:translate-x-0">
                                                         {item.status === 'PAID' ? (
                                                             <button
                                                                 onClick={() => reopenTransaction(item.id)}
                                                                 title="Reabrir Lançamento"
-                                                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors shadow-sm bg-white"
+                                                                className="w-9 h-9 flex items-center justify-center text-m3-primary hover:bg-m3-primary/10 rounded-xl transition-all"
                                                             >
-                                                                <RotateCcw size={16} />
+                                                                <span className="material-symbols-outlined text-lg">history</span>
                                                             </button>
                                                         ) : (
                                                             <>
@@ -1268,9 +1420,9 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                                                                         setIsPaymentModalOpen(true);
                                                                     }}
                                                                     title="Liquidar Lançamento"
-                                                                    className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors shadow-sm bg-white"
+                                                                    className="w-9 h-9 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
                                                                 >
-                                                                    <CheckCircle2 size={16} />
+                                                                    <span className="material-symbols-outlined text-lg">check_circle</span>
                                                                 </button>
                                                                 {item.type === 'INCOME' && (
                                                                     <button
@@ -1279,17 +1431,17 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                                                                             setIsPixModalOpen(true);
                                                                         }}
                                                                         title="Gerar Cobrança PIX"
-                                                                        className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors shadow-sm bg-white"
+                                                                        className="w-9 h-9 flex items-center justify-center text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
                                                                     >
-                                                                        <QrCode size={16} />
+                                                                        <span className="material-symbols-outlined text-lg">qr_code</span>
                                                                     </button>
                                                                 )}
                                                                 <button
                                                                     onClick={() => openEditModal(item)}
                                                                     title="Editar Lançamento"
-                                                                    className="p-2 text-slate-400 hover:bg-slate-50 rounded-lg transition-colors"
+                                                                    className="w-9 h-9 flex items-center justify-center text-m3-on-surface-variant hover:bg-m3-surface-container rounded-xl transition-all"
                                                                 >
-                                                                    <Edit2 size={16} />
+                                                                    <span className="material-symbols-outlined text-lg">edit</span>
                                                                 </button>
                                                                 <button
                                                                     onClick={() => {
@@ -1297,14 +1449,14 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                                                                         setIsDeleteModalOpen(true);
                                                                     }}
                                                                     title="Excluir Lançamento"
-                                                                    className="p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors"
+                                                                    className="w-9 h-9 flex items-center justify-center text-m3-error hover:bg-m3-error/10 rounded-xl transition-all"
                                                                 >
-                                                                    <Trash2 size={16} />
+                                                                    <span className="material-symbols-outlined text-lg">delete</span>
                                                                 </button>
                                                             </>
                                                         )}
-                                                        <button className="p-2 text-slate-400 hover:bg-slate-50 rounded-lg transition-colors">
-                                                            <MoreVertical size={16} />
+                                                        <button className="w-9 h-9 flex items-center justify-center text-m3-on-surface-variant opacity-40 hover:opacity-100 hover:bg-m3-surface-container rounded-xl transition-all">
+                                                            <span className="material-symbols-outlined text-lg">more_vert</span>
                                                         </button>
                                                     </div>
                                                 </td>
@@ -1315,158 +1467,201 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                             </table>
                         </div>
 
-                        {/* --- FOOTER SUMMARY --- */}
-                        <div className="card-base flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mt-4">
-                            <div>
-                                <h4 className="text-lg font-black text-slate-800">Total do período</h4>
-                                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">
-                                    {startDate && endDate ? `${formatDate(startDate)} a ${formatDate(endDate)}` : 'Consolidado do Período'}
+                        {/* --- FOOTER SUMMARY (M3 Premium Design) --- */}
+                        <div className="bg-m3-surface-container-low rounded-[32px] p-8 border border-m3-outline-variant/30 shadow-sm mt-8 flex flex-col lg:flex-row justify-between items-center gap-8">
+                            <div className="text-center lg:text-left">
+                                <h4 className="text-sm font-black text-m3-on-surface uppercase tracking-[0.2em] mb-1 opacity-60">Consolidado</h4>
+                                <p className="text-lg font-black text-m3-on-surface tracking-tighter">
+                                    {startDate && endDate ? `${formatDate(startDate)} a ${formatDate(endDate)}` : 'Geral do Período'}
                                 </p>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-8 bg-slate-50 px-6 py-4 rounded-xl border border-slate-100">
-                                <div className="flex flex-col items-center px-4 border-r border-slate-200">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Entradas</span>
-                                    <span className="text-base font-black text-emerald-600">
+                            <div className="flex flex-wrap justify-center gap-6">
+                                {/* Entradas */}
+                                <div className="bg-white/5 px-8 pt-4 pb-5 rounded-3xl border border-m3-outline-variant/10 flex flex-col items-center min-w-[160px] shadow-sm">
+                                    <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
+                                        <span className="material-symbols-outlined text-base">trending_up</span>
+                                    </div>
+                                    <span className="text-[10px] font-black text-m3-on-surface-variant/50 uppercase tracking-widest mb-1.5">Entradas</span>
+                                    <span className="text-xl font-black text-emerald-600 tracking-tighter">
                                         {formatCurrency(filteredTransactions.filter(t => t.type === 'INCOME').reduce((acc, t) => acc + Number(t.amount), 0))}
                                     </span>
                                 </div>
-                                <div className="flex flex-col items-center px-4 border-r border-slate-200">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Saídas</span>
-                                    <span className="text-base font-black text-red-600">
+
+                                {/* Saídas */}
+                                <div className="bg-white/5 px-8 pt-4 pb-5 rounded-3xl border border-m3-outline-variant/10 flex flex-col items-center min-w-[160px] shadow-sm">
+                                    <div className="w-8 h-8 rounded-xl bg-m3-error/10 text-m3-error flex items-center justify-center mb-3">
+                                        <span className="material-symbols-outlined text-base">trending_down</span>
+                                    </div>
+                                    <span className="text-[10px] font-black text-m3-on-surface-variant/50 uppercase tracking-widest mb-1.5">Saídas</span>
+                                    <span className="text-xl font-black text-m3-error tracking-tighter">
                                         {formatCurrency(filteredTransactions.filter(t => t.type === 'EXPENSE').reduce((acc, t) => acc + Number(t.amount), 0))}
                                     </span>
                                 </div>
-                                <div className="flex flex-col items-center px-4">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Saldo do Período</span>
-                                    <span className={`text-xl font-black ${filteredTransactions.reduce((acc, t) => acc + (t.type === 'INCOME' ? Number(t.amount) : -Number(t.amount)), 0) < 0 ? 'text-red-600' : 'text-blue-600'}`}>
+
+                                {/* Saldo Final */}
+                                <div className="bg-m3-primary/5 px-10 pt-4 pb-5 rounded-3xl border border-m3-primary/10 flex flex-col items-center min-w-[200px] shadow-md relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 w-16 h-16 bg-m3-primary/5 rounded-full -mr-6 -mt-6"></div>
+                                    <div className="w-10 h-10 rounded-2xl bg-m3-primary text-white flex items-center justify-center mb-3 shadow-lg shadow-m3-primary/20">
+                                        <span className="material-symbols-outlined text-xl font-variation-fill">account_balance</span>
+                                    </div>
+                                    <span className="text-[10px] font-black text-m3-primary uppercase tracking-[0.2em] mb-1.5">Saldo Líquido</span>
+                                    <span className={`text-2xl font-black tracking-tighter ${filteredTransactions.reduce((acc, t) => acc + (t.type === 'INCOME' ? Number(t.amount) : -Number(t.amount)), 0) < 0 ? 'text-m3-error' : 'text-m3-primary'}`}>
                                         {formatCurrency(filteredTransactions.reduce((acc, t) => acc + (t.type === 'INCOME' ? Number(t.amount) : -Number(t.amount)), 0))}
                                     </span>
                                 </div>
                             </div>
                         </div>
                     </div>
-                )}
+                </div>
 
-                {activeTab === 'categories' && (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="card-base flex justify-between items-center mb-6">
-                            <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
-                                <Tags className="text-blue-600" /> Gerenciar Categorias
-                            </h3>
-                            <div className="flex gap-3">
+                <div className={activeTab === 'categories' ? 'block' : 'hidden'}>
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="bg-m3-surface-container-low rounded-[32px] p-8 border border-m3-outline-variant/30 flex justify-between items-center shadow-sm">
+                            <div className="flex flex-col">
+                                <h3 className="text-xl font-black text-m3-on-surface flex items-center gap-3">
+                                    <span className="material-symbols-outlined text-m3-primary text-2xl">label</span> Gerenciar Categorias
+                                </h3>
+                                <p className="text-[10px] font-black text-m3-on-surface-variant/40 uppercase tracking-[0.2em] mt-1">Organize seus lançamentos por tipo e centro de custo</p>
+                            </div>
+                            <div className="flex gap-4">
                                 <button
                                     onClick={handleGenerateDefaultCategories}
                                     disabled={isGeneratingCategories}
-                                    className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-xl font-bold transition-all"
+                                    className="flex items-center gap-2 bg-m3-surface-container-high text-m3-on-surface px-6 py-3 rounded-[16px] text-xs font-black transition-all hover:bg-m3-surface-container-highest border border-m3-outline-variant/20"
                                 >
-                                    {isGeneratingCategories ? <RefreshCw className="animate-spin" size={18} /> : <ArrowDownCircle size={18} />}
-                                    Gerar Categorias Padrão
+                                    {isGeneratingCategories ? <span className="material-symbols-outlined animate-spin text-lg">refresh</span> : <span className="material-symbols-outlined text-lg">magic_button</span>}
+                                    Gerar Padrão
                                 </button>
                                 <button
                                     onClick={() => {
                                         setSelectedCategory(null);
                                         setIsAddCategoryModalOpen(true);
                                     }}
-                                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold transition-all shadow-lg shadow-blue-200"
+                                    className="flex items-center gap-2 bg-m3-primary text-white px-6 py-3 rounded-[16px] text-xs font-black transition-all hover:bg-m3-primary/90 shadow-lg shadow-m3-primary/20"
                                 >
-                                    <Plus size={18} /> Nova Categoria
+                                    <span className="material-symbols-outlined text-lg">add</span> Nova Categoria
                                 </button>
                             </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             {/* Income Categories */}
-                            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                                <h4 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Receitas</h4>
+                            <div className="bg-m3-surface-container-low rounded-[32px] p-8 border border-m3-outline-variant/30 shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -mr-12 -mt-12"></div>
+                                <h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Receitas
+                                </h4>
                                 <div className="space-y-2">
-                                    {categories.filter(c => c.type === 'INCOME').map(cat => (
-                                        <div key={cat.id} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-lg transition-colors group">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }}></div>
-                                                <span className="font-medium text-slate-700">{cat.name}</span>
+                                    {categories.filter(c => c.type === 'INCOME').length === 0 ? (
+                                        <p className="text-xs text-m3-on-surface-variant/40 font-black uppercase tracking-widest py-10 text-center">Nenhuma categoria de receita</p>
+                                    ) : (
+                                        categories.filter(c => c.type === 'INCOME').map(cat => (
+                                            <div key={cat.id} className="flex items-center justify-between p-4 hover:bg-white rounded-2xl transition-all group border border-transparent hover:border-emerald-100/50 hover:shadow-sm">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm" style={{ backgroundColor: `${cat.color}15`, color: cat.color }}>
+                                                        <span className="material-symbols-outlined text-xl">label</span>
+                                                    </div>
+                                                    <span className="text-sm font-black text-m3-on-surface">{cat.name}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedCategory(cat);
+                                                            setIsAddCategoryModalOpen(true);
+                                                        }}
+                                                        className="w-10 h-10 flex items-center justify-center text-m3-on-surface-variant hover:bg-m3-surface-container-high rounded-xl transition-all"
+                                                        title="Editar"
+                                                    >
+                                                        <span className="material-symbols-outlined text-lg">edit</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (confirm(`Excluir categoria "${cat.name}"?`)) {
+                                                                deleteCategory(cat.id);
+                                                            }
+                                                        }}
+                                                        className="w-10 h-10 flex items-center justify-center text-m3-error hover:bg-m3-error/10 rounded-xl transition-all"
+                                                        title="Excluir"
+                                                    >
+                                                        <span className="material-symbols-outlined text-lg">delete</span>
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-1">
-                                                <button
-                                                    onClick={() => {
-                                                        setSelectedCategory(cat);
-                                                        setIsAddCategoryModalOpen(true);
-                                                    }}
-                                                    className="text-slate-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg hover:bg-white"
-                                                    title="Editar"
-                                                >
-                                                    <Edit2 size={14} />
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        if (confirm(`Excluir categoria "${cat.name}"?`)) {
-                                                            deleteCategory(cat.id);
-                                                        }
-                                                    }}
-                                                    className="text-slate-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg hover:bg-white"
-                                                    title="Excluir"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))
+                                    )}
                                 </div>
                             </div>
 
                             {/* Expense Categories */}
-                            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                                <h4 className="text-sm font-bold text-red-600 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Despesas</h4>
+                            <div className="bg-m3-surface-container-low rounded-[32px] p-8 border border-m3-outline-variant/30 shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-m3-error/5 rounded-full -mr-12 -mt-12"></div>
+                                <h4 className="text-[10px] font-black text-m3-error uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-m3-error"></span> Despesas
+                                </h4>
                                 <div className="space-y-2">
-                                    {categories.filter(c => c.type === 'EXPENSE').map(cat => (
-                                        <div key={cat.id} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-lg transition-colors group">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color }}></div>
-                                                <span className="font-medium text-slate-700">{cat.name}</span>
+                                    {categories.filter(c => c.type === 'EXPENSE').length === 0 ? (
+                                        <p className="text-xs text-m3-on-surface-variant/40 font-black uppercase tracking-widest py-10 text-center">Nenhuma categoria de despesa</p>
+                                    ) : (
+                                        categories.filter(c => c.type === 'EXPENSE').map(cat => (
+                                            <div key={cat.id} className="flex items-center justify-between p-4 hover:bg-white rounded-2xl transition-all group border border-transparent hover:border-m3-error/10 hover:shadow-sm">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm" style={{ backgroundColor: `${cat.color}15`, color: cat.color }}>
+                                                        <span className="material-symbols-outlined text-xl">label</span>
+                                                    </div>
+                                                    <span className="text-sm font-black text-m3-on-surface">{cat.name}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedCategory(cat);
+                                                            setIsAddCategoryModalOpen(true);
+                                                        }}
+                                                        className="w-10 h-10 flex items-center justify-center text-m3-on-surface-variant hover:bg-m3-surface-container-high rounded-xl transition-all"
+                                                        title="Editar"
+                                                    >
+                                                        <span className="material-symbols-outlined text-lg">edit</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (confirm(`Excluir categoria "${cat.name}"?`)) {
+                                                                deleteCategory(cat.id);
+                                                            }
+                                                        }}
+                                                        className="w-10 h-10 flex items-center justify-center text-m3-error hover:bg-m3-error/10 rounded-xl transition-all"
+                                                        title="Excluir"
+                                                    >
+                                                        <span className="material-symbols-outlined text-lg">delete</span>
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-1">
-                                                <button
-                                                    onClick={() => {
-                                                        setSelectedCategory(cat);
-                                                        setIsAddCategoryModalOpen(true);
-                                                    }}
-                                                    className="text-slate-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg hover:bg-white"
-                                                    title="Editar"
-                                                >
-                                                    <Edit2 size={14} />
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        if (confirm(`Excluir categoria "${cat.name}"?`)) {
-                                                            deleteCategory(cat.id);
-                                                        }
-                                                    }}
-                                                    className="text-slate-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg hover:bg-white"
-                                                    title="Excluir"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))
+                                    )}
                                 </div>
                             </div>
                         </div>
                     </div>
-                )}
+                </div>
 
-                {activeTab === 'accounts' && (
-                    selectedAccount ? (
+                <div className={activeTab === 'accounts' ? 'block' : 'hidden'}>
+                    {selectedAccount ? (
                         <AccountDetails
                             account={selectedAccount}
                             transactions={transactions.filter(t => t.account_id === selectedAccount.id)}
+                            allTransactions={transactions}
                             categories={categories}
                             accounts={accounts}
+                            currentUser={currentUser}
+                            importLogs={importLogs}
+                            contacts={contacts}
                             onBack={() => setSelectedAccount(null)}
                             onAddTransaction={() => openModal('EXPENSE')} // Could be improved to pre-select account
                             onImport={() => {/* This will be handled inside AccountDetails */ }}
                             updateTransactionStatus={updateTransactionStatus}
                             addTransaction={addTransaction}
+                            addImportLog={addImportLog}
+                            updateImportLog={updateImportLog}
+                            deleteImportLog={deleteImportLog}
                         />
                     ) : (
                         <AccountsView
@@ -1486,15 +1681,18 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                                 refresh();
                             }}
                             onSelectAccount={(acc) => setSelectedAccount(acc)}
+                            onShowReconciliation={() => {
+                                const bank = accounts.find(a => a.type === 'BANK');
+                                if (bank) setSelectedAccount(bank);
+                                else if (accounts.length > 0) setSelectedAccount(accounts[0]);
+                                setActiveTab('accounts');
+                            }}
                         />
-                    )
-                )}
+                    )}
+                </div>
 
-                {(activeTab === 'reconciliation' || activeTab === 'importacao') && (
-                    <BankImport />
-                )}
 
-                {activeTab === 'cards' && (
+                <div className={activeTab === 'cards' ? 'block' : 'hidden'}>
                     <CreditCardManagement
                         accounts={accounts}
                         transactions={transactions}
@@ -1573,7 +1771,16 @@ const Financial: React.FC<FinancialProps> = ({ currentUser, initialTab = 'transa
                             setIsDeleteModalOpen(true);
                         }}
                     />
-                )}
+                </div>
+
+                <div className={activeTab === 'contacts' ? 'block' : 'hidden'}>
+                    <FinancialContacts 
+                        contacts={contacts} 
+                        onAdd={addContact}
+                        onUpdate={updateContact}
+                        onDelete={deleteContact}
+                    />
+                </div>
             </main>
         </div>
     );

@@ -58,9 +58,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') return;
-      setSession(s);
+      
+      // Se já temos uma sessão e o ID do usuário não mudou, evitamos recarregar tudo
+      setSession(prev => {
+        if (prev?.user?.id === s?.user?.id) return prev;
+        return s;
+      });
+
       if (s) {
-        loadUser(s.user.email!);
+        // Só carrega o usuário se ele for diferente do atual ou se não houver usuário
+        if (!currentUser || currentUser.id !== s.user.id) {
+          loadUser(s.user.email!);
+        }
       } else {
         setCurrentUser(null);
         setLoading(false);
@@ -80,7 +89,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle(); // Usar maybeSingle em vez de single para evitar erro 406 se não existir
       
       if (userData) {
-        setCurrentUser(userData as User);
+        // Auto-Reparo de Agency ID (v2.2) para garantir que seja sempre um UUID
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userData.agency_id);
+        if (userData.agency_id && !isUuid) {
+          console.log('Detectado Agency ID legado (slug). Reparando...', userData.agency_id);
+          const { data: realAgency } = await supabase.from('agencies').select('id').eq('slug', userData.agency_id).maybeSingle();
+          if (realAgency) {
+            const { error: patchError } = await supabase.from('users').update({ agency_id: realAgency.id }).eq('id', userData.id);
+            if (!patchError) {
+              userData.agency_id = realAgency.id;
+              console.log('Agency ID reparado com sucesso para:', realAgency.id);
+            }
+          }
+        }
+        // Só atualiza o estado se os dados mudaram de fato (evita flicker e re-renders globais)
+        setCurrentUser(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(userData)) return prev;
+          return userData as User;
+        });
       } else {
         console.warn('Usuário não encontrado na tabela public.users:', email);
         
@@ -91,19 +117,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const authUser = currentSession.user;
           const defaultAgencySlug = `agency-${Math.random().toString(36).substring(2, 8)}`;
           
-          // 1. Criar agência genérica
-          await supabase.from('agencies').insert([{
+          // 1. Criar agência genérica e obter o ID (UUID)
+          const { data: agencyData, error: agencyError } = await supabase.from('agencies').insert([{
             name: 'Minha Imobiliária',
             slug: defaultAgencySlug
-          }]);
+          }]).select().single();
 
-          // 2. Criar perfil
+          if (agencyError || !agencyData) {
+            console.error('Falha ao criar agência no auto-fix:', agencyError);
+            setLoading(false);
+            return;
+          }
+
+          // 2. Criar perfil usando o ID da agência (UUID)
           const { data: newUserData, error: createError } = await supabase.from('users').insert([{
             id: authUser.id,
             name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || email.split('@')[0],
             email: email,
             role: 'ADMIN',
-            agency_id: defaultAgencySlug
+            agency_id: agencyData.id // AGORA USANDO O UUID CORRETO
           }]).select().maybeSingle();
 
           if (newUserData && !createError) {
