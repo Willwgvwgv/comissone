@@ -3293,16 +3293,9 @@ export const Financial: React.FC<FinancialProps> = ({ currentUser, activeView = 
                   return (
                     <React.Fragment key={tx.id}>
                     {isFirstOfDayGroup && showDailyBalanceRows && (
-                      <tr className="bg-slate-100/70 border-y border-slate-200">
+                      <tr className="bg-slate-50 border-t border-slate-200">
                         <td colSpan={8} className="py-2 px-0">
-                          <div className="flex items-center justify-between">
-                            <span className="sticky left-6 text-xs font-black text-slate-600 whitespace-nowrap">{formatDateBR(tx.due_date)}</span>
-                            {dayClosingBalance !== undefined && (
-                              <span className="sticky right-6 text-xs font-black text-slate-600 whitespace-nowrap">
-                                Saldo do Dia: <span className={dayClosingBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatCurrency(dayClosingBalance)}</span>
-                              </span>
-                            )}
-                          </div>
+                          <span className="sticky left-6 text-xs font-black text-slate-600 whitespace-nowrap">{formatDateBR(tx.due_date)}</span>
                         </td>
                       </tr>
                     )}
@@ -3475,7 +3468,19 @@ export const Financial: React.FC<FinancialProps> = ({ currentUser, activeView = 
                       </td>
                     </tr>
                     )}
-                    {isLastOfDayGroup && showDailyBalanceRows && <tr className="h-2"><td colSpan={8}></td></tr>}
+                    {isLastOfDayGroup && showDailyBalanceRows && (
+                      <tr className="bg-slate-100/70 border-b border-slate-200">
+                        <td colSpan={8} className="py-2 px-0">
+                          <div className="flex items-center justify-end">
+                            {dayClosingBalance !== undefined && (
+                              <span className="sticky right-6 text-xs font-black text-slate-600 whitespace-nowrap">
+                                Saldo do Dia: <span className={dayClosingBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{formatCurrency(dayClosingBalance)}</span>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                     </React.Fragment>
                   );
                 })}
